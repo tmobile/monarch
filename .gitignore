@@ -105,3 +105,4 @@ ENV/
 
 journal.json
 targeted.json
+config
