@@ -1,5 +1,5 @@
 # Monarch
-This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) which can perform targeted expiriments
+This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) which can perform targeted experiments
 on application deployed in [Cloud Foundry](https://www.cloudfoundry.org/) applications their bound services.
 
 ## Setup
@@ -181,25 +181,30 @@ The following is a sample, Chaos-Toolkit experiment file to block all traffic to
 
 ### CLI Interface
 ```commandline
-usage: python -m monarch.cli [-h] (--block | --block-services | --unblock | --discover)
+usage: cli.py [-h] [-b TO_BLOCK]
+              [--block-app | --crash-instance | --block-services | --unblock-all | --discover]
               [--config PATH] [--targeted PATH]
               org space app
 
 Block Cloud Foundry Applications or their Services.
 
 positional arguments:
-  org               Cloud Foundry Organization the Application is in.
-  space             Cloud Foundry Space the Application is in.
-  app               Name of the application in Cloud Foundry.
+  org                   Cloud Foundry Organization the Application is in.
+  space                 Cloud Foundry Space the Application is in.
+  app                   Name of the application in Cloud Foundry.
 
 optional arguments:
-  -h, --help        show this help message and exit
-  --block           Block access to the application.
-  --block-services  Block the app from accessing its bound services.
-  --unblock         Unblock the app and its services.
-  --discover        Discover the application hosts and bound service
-                    information.
-  --config PATH     Specify an alternative config path.
-  --targeted PATH   Specify an alternative storage location for targeted
-                    applications and services.
+  -h, --help            show this help message and exit
+  -b TO_BLOCK, --block TO_BLOCK
+                        Block access to a service.
+  --block-app           Block access to the application.
+  --crash-instance      Crash a random app instance.
+  --block-services      Block the app from accessing any of its bound
+                        services.
+  --unblock-all         Unblock the app and its services.
+  --discover            Discover the application hosts and bound service
+                        information.
+  --config PATH         Specify an alternative config path.
+  --targeted PATH       Specify an alternative storage location for targeted
+                        applications and services.
 ```

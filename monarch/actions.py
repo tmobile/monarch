@@ -49,6 +49,25 @@ def unblock_traffic(org: str, space: str, appname: str, configuration: Configura
     return _run(f, "Unblocking all traffic to {}...".format(appname))
 
 
+def crash_random_instance(org: str, space: str, appname: str, configuration: Configuration, count: int=1):
+    """
+    Crash one or more random application instances.
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param count: int; Number of instances to kill.
+    :param configuration: Configuration; Configuration details, see `README.md`.
+    :return: A JSON Object representing the application which was targeted.
+    """
+    def f():
+        app = discover_app(configuration, org, space, appname)
+        app.crash_random_instance(configuration, count=count)
+        return app
+
+    msg = 'Crashing {} random app instance(s)...'.format(count)
+    return _run(f, msg)
+
+
 def block_services(org: str, space: str, appname: str, configuration: Configuration, services=None) -> Dict[str, Any]:
     """
     Block the application from reaching all its services.

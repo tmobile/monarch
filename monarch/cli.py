@@ -77,6 +77,8 @@ def main(*args):
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument('--block-app', dest='action', action='store_const', const='block_app',
                        help='Block access to the application.')
+    group.add_argument('--crash-instance', dest='action', action='store_const', const='crash_instance',
+                       help='Crash a random app instance.')
     group.add_argument('--block-services', dest='action', action='store_const', const='block_all_services',
                        help='Block the app from accessing any of its bound services.')
     group.add_argument('--unblock-all', dest='action', action='store_const', const='unblock',
@@ -115,6 +117,10 @@ def main(*args):
         app.find_hosts(cfg)
         save_targeted(args.targeted, app)
         app.block(cfg)
+    elif action == 'crash_instance':
+        app = App(org, space, appname)
+        app.find_hosts(cfg)
+        app.crash_random_instance(cfg)
     elif action == 'unblock':
         app = load_targeted(args.targeted, org, space, appname)
         if app is None:

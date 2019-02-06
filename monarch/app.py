@@ -7,6 +7,7 @@ from monarch.service import Service
 from monarch.util import extract_json
 from subprocess import Popen, PIPE, DEVNULL
 from logzero import logger
+from random import shuffle
 
 
 def discover_app(cfg, org, space, appname):
@@ -133,6 +134,17 @@ class App:
         else:
             self.services[service.id()] = service
 
+    def instances(self):
+        """
+        Get a list of all application instances.
+        :return: List[(str, str)]; List of all application instances diego-cell and container ips.
+        """
+        instances = []
+        for dc in self.diego_hosts.values():
+            for container_ip in dc.containers.keys():
+                instances.append((dc.vm, container_ip))
+        return instances
+
     def find_hosts(self, cfg):
         """
         Find all diego-cells and respective containers which host this application. This will first find the GUID of the
@@ -189,11 +201,49 @@ class App:
 
         return self.services
 
+    def crash_random_instance(self, cfg, count=1):
+        """
+        Crash one or more random application instances.
+        :param cfg: Dict[String, any]; Configuration information about the environment.
+        :param count: int; Number of instances to crash.
+        """
+        instances = self.instances()
+        count = min(count, len(instances))
+        shuffle(instances)
+        instances = instances[:count]
+
+        for (diego_cell, container_ip) in instances:
+            logger.debug('Blocking container at {}.'.format(container_ip))
+            cmd = '{} -e {} -d {} ssh {}'.format(cfg['bosh']['cmd'], cfg['bosh']['env'], cfg['bosh']['cf-dep'],
+                                                 diego_cell)
+            logger.debug('$ ' + cmd)
+            with Popen(cmd, shell=True, stdin=PIPE, stdout=PIPE, stderr=DEVNULL, encoding=DEFAULT_ENCODING) as proc:
+                cmd = "cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1 && exit".format(container_ip)
+                logger.debug('$> ' + cmd)
+                stdout, _ = proc.communicate(input=cmd + '\n', timeout=30)
+                if proc.returncode:
+                    logger.error("Failed retrieving container GUID from {}".format(diego_cell))
+                    continue
+
+            container_guid = extract_json(stdout)[0]['data']['container-guid']
+            logger.info('Crashing app instance at {} with container {}:{}.'.format(diego_cell, container_ip,
+                                                                                   container_guid))
+            cmd = '{} -e {} -d {} ssh {}'.format(cfg['bosh']['cmd'], cfg['bosh']['env'], cfg['bosh']['cf-dep'],
+                                                 diego_cell)
+            logger.debug('$ ' + cmd)
+            with Popen(cmd, shell=True, stdin=PIPE, stdout=DEVNULL, stderr=DEVNULL, encoding=DEFAULT_ENCODING) as proc:
+                cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java && exit"\
+                    .format(container_guid)
+                logger.debug('$> ' + cmd)
+                proc.communicate(input=cmd + '\n', timeout=30)
+                if proc.returncode:
+                    logger.error("Failed to crash application container {}:{}.".format(container_guid, container_ip))
+
     def block(self, cfg):
         """
         Block access to this application on all its known hosts.
         :param cfg: Dict[String, any]; Configuration information about the environment.
-        :return: int; A returncode if any of the bosh ssh instances does not return 0.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for dc in self.diego_hosts.values():
             ret = dc.block(cfg)
@@ -209,7 +259,7 @@ class App:
         Unblock access to this application on all its known hosts. This will actually run the unblock commands multiple
         times, as defined by `TIMES_TO_REMOVE` to prevent issues if an application was blocked multiple times.
         :param cfg: Dict[String, any]; Configuration information about the environment.
-        :return: int; A returncode if any of the bosh ssh instances does not return 0.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for dc in self.diego_hosts.values():
             ret = dc.unblock(cfg)
@@ -225,7 +275,7 @@ class App:
         Block this application from accessing its services on all its known hosts.
         :param cfg: Dict[String, any]; Configuration information about the environment.
         :param services: List[String]; List of service names to block, will target all if unset.
-        :return: int; A returncode if any of the bosh ssh instances does not return 0.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
 
         for dc in self.diego_hosts.values():
@@ -250,7 +300,7 @@ class App:
         Unblock this application from accessing its services on all its known hosts.
         :param cfg: Dict[String, any]; Configuration information about the environment.
         :param services: List[String]; List of service names to unblock, will target all if unset.
-        :return: int; A returncode if any of the bosh ssh instances does not return 0.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for dc in self.diego_hosts.values():
             fserv = self.services.values()
