@@ -1,6 +1,7 @@
 # Monarch
-This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) which can perform targeted experiments
-on application deployed in [Cloud Foundry](https://www.cloudfoundry.org/) applications their bound services.
+
+This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) (CTK) which can perform targeted experiments
+on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
 
 ## Setup
 
@@ -75,20 +76,13 @@ service-whitelist:
 
 
 ## Usage
-There are two ways you can call these scripts. The first is the CLI which will allow you to manually block a
+There are two ways you can call these scripts. The first is the Python Shell which will allow you to manually block
 services or applications and then unblock them at your leisure. The second is through the `actions` and `probes` which
-should be called by Chaos Toolkit. (Chaos Toolkit should **never** call the CLI interface).
-
-Presently, the CLI and Chaos Toolkit interfaces are not directly compatible due to the added filtering options in the
-Chaos Toolkit version and the anticipated support for this being run as a service. Eventually the Chaos Toolkit
-interface will save to a database what was attacked as the CLI currently saves to a JSON file. Until that time, the
-CLI interface is stateful saving to the targeted file and the Chaos Toolkit interface is stateless re-querying each
-time for hosts and services. As we have yet to observe Cloud Foundry or moving application containers, this *should* not
-be an issue.
+should be called by Chaos Toolkit.
 
 ### Chaos Toolkit Interface
 If you have not installed the `monarch` package, then make sure you run Chaos Toolkit from this directory (the root of
-this repository) using `pyhton -m chaostoolkit run exp.json` or else the `monarch` module will not be found. Otherwise
+this repository) using `python -m chaostoolkit run exp.json` or else the `monarch` module will not be found. Otherwise
 just use `chaos run exp.json` from any directory.
 
 Currently, the Chaos Toolkit interface does not support saving information about what was targeted, which should be okay
@@ -180,31 +174,25 @@ The following is a sample, Chaos-Toolkit experiment file to block all traffic to
 ``` 
 
 ### CLI Interface
-```commandline
-usage: cli.py [-h] [-b TO_BLOCK]
-              [--block-app | --crash-instance | --block-services | --unblock-all | --discover]
-              [--config PATH] [--targeted PATH]
-              org space app
+For now, there is no CLI interface, instead use an interactive python shell session. See bleow.
 
-Block Cloud Foundry Applications or their Services.
+### From Python Shell
+Example session:
+```python
+from monarch.config import Config
+from monarch.app import App
 
-positional arguments:
-  org                   Cloud Foundry Organization the Application is in.
-  space                 Cloud Foundry Space the Application is in.
-  app                   Name of the application in Cloud Foundry.
+Config().load_yaml('config/tt-stg02.yml')
 
-optional arguments:
-  -h, --help            show this help message and exit
-  -b TO_BLOCK, --block TO_BLOCK
-                        Block access to a service.
-  --block-app           Block access to the application.
-  --crash-instance      Crash a random app instance.
-  --block-services      Block the app from accessing any of its bound
-                        services.
-  --unblock-all         Unblock the app and its services.
-  --discover            Discover the application hosts and bound service
-                        information.
-  --config PATH         Specify an alternative config path.
-  --targeted PATH       Specify an alternative storage location for targeted
-                        applications and services.
+app = App.discover('sys-tmo', 'ce-service-registry', 'spring-music')
+
+app.block()
+app.unblock()
+
+app.crash_random_instance(2) # will require that you rediscover the app once CF brings a new container up
+app = App.discover('sys-tmo', 'ce-service-registry', 'spring-music')
+
+app.block_services('musicdb')
+app.unblock_services()
+
 ```
