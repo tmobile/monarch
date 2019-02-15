@@ -3,6 +3,7 @@ Cloud foundry Application tools.
 """
 
 import json
+import re
 import sys
 from random import shuffle
 
@@ -12,7 +13,7 @@ from monarch import TIMES_TO_REMOVE
 from monarch.app_instance import AppInstance
 from monarch.config import Config
 from monarch.service import Service
-from monarch.util import extract_json, run_cmd, run_cmd_on_diego_cell, cf_target
+import monarch.util as util
 
 
 class App:
@@ -29,11 +30,14 @@ class App:
         :param appname: String; the name of the application deployment within cloud foundry.
         :return: App; Instance of App which holds all the discovered information.
         """
-        if cf_target(org, space):
+        if util.cf_target(org, space):
             logger.error("Failed to target org %s and space %s!", org, space)
             return None
         app = App(org, space, appname)
-        return app if app.find_guid() and app.find_instances() and app.find_services() else None
+        if app.find_guid() and app.find_instances() and app.find_services():
+            logger.debug(json.dumps(app.serialize(), indent=2))
+            return app
+        return None
 
     def __init__(self, org, space, appname):
         """
@@ -125,9 +129,9 @@ class App:
         for app_instance in instances:
             logger.info('Crashing app instance at %s with container %s:%s.',
                         app_instance['diego_id'], app_instance['cont_ip'], app_instance['cont_id'])
-            cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java && exit"\
+            cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java"\
                 .format(app_instance['cont_id'])
-            rcode, _, _ = run_cmd_on_diego_cell(app_instance['diego_id'], cmd)
+            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], cmd)
 
             if rcode:
                 logger.error("Failed to crash application container %s:%s.",
@@ -148,11 +152,11 @@ class App:
             if not cmds:
                 continue
 
-            cmds.append('exit')
-            rcode, _, _ = run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
 
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
+                self.unblock()
                 return rcode
         return 0
 
@@ -172,8 +176,7 @@ class App:
             if not cmds:
                 continue
 
-            cmds.append('exit')
-            run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
 
     def block_services(self, services=None):
         """
@@ -198,10 +201,10 @@ class App:
                     cmds.append(cmd)
             if not cmds:
                 continue
-            cmds.append('exit')
-            rcode, _, _ = run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
+                self.unblock_services(services=services)
                 return rcode
         return 0
 
@@ -228,12 +231,142 @@ class App:
                         cmds.append(cmd)
             if not cmds:
                 continue
-            cmds.append('exit')
-            run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
             # if rcode:
             #     # This is normal because we remove the rule more than one time just in case.
             #     logger.warn("Received return code {} from iptables call.".format(rcode))
             #     code = rcode
+
+    def manipulate_network(self, *, latency=None, latency_sd=None, loss=None, loss_r=None,
+                           duplication=None, corruption=None):
+        """
+        Manipulate the network traffic to the application and its services. This will not work simultaneously with
+        network shaping.
+
+        :param latency: int; Latency to introduce in milliseconds.
+        :param latency_sd: int; Standard deviation of the latency in milliseconds, if None, there will be no variance.
+        With relatively large variance values, packet reordering will occur.
+        :param loss: float; Percent in the range [0, 1] of packets which should be dropped/lost.
+        :param loss_r: float; Correlation coefficient in the range [0, 1] of the packet loss.
+        :param duplication: float; Percent in the range [0, 1] of packets which should be duplicated.
+        :param corruption: float; Percent in the range [0, 1] of packets which should be corrupted.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
+        """
+        if not (latency or loss or duplication or corruption):
+            # if no actions are specified, it is a noop
+            return 0
+
+        for app_instance in self.instances:
+            cmd = ['sudo', 'tc', 'qdisc', 'add', 'dev', app_instance['diego_vi'], 'root netem']
+            if latency:
+                assert latency > 0
+                cmd.extend(['delay', '{}ms'.format(latency)])
+                if latency_sd:
+                    assert latency_sd > 0
+                    cmd.extend(['{}ms'.format(latency_sd), 'distribution', 'normal'])
+            if loss:
+                assert 0 <= loss <= 1
+                cmd.extend(['loss', '{}%'.format(loss * 100)])
+                if loss_r:
+                    assert 0 <= loss_r <= 1
+                    cmd.append('{}%'.format(loss_r * 100))
+            if duplication:
+                assert 0 <= duplication <= 1
+                cmd.extend(['duplicate', '{}%'.format(duplication * 100)])
+            if corruption:
+                assert 0 <= corruption <= 1
+                cmd.extend(['corrupt', '{}%'.format(corruption * 100)])
+            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], ' '.join(cmd))
+            if rcode:
+                logger.error("Failed to manipulate network for app instance with rcode %d!", rcode)
+                self.unmanipulate_network()
+                return rcode
+        return 0
+
+    def shape_network(self, upload_speed):
+        """
+        Impose bandwidth limits on the application. This will not work simultaneously with other network traffic
+        manipulations and will also be undone by calling `unmanipulate_network`.
+
+        Code ported from https://github.com/magnific0/wondershaper/.
+
+        :param upload_speed: The maximum upload speed in kilobits per second. (Must be >=10)
+        :return: int; A returncode if any of the bosh ssh instances do not return 0
+        """
+        assert upload_speed >= 10
+        cfg = Config()
+
+        for app_instance in self.instances:
+            iface = app_instance['diego_vi']
+            cmds = [
+                'sudo tc qdisc add dev {} root handle 1: htb default 20'.format(iface),
+
+                'sudo tc class add dev {} parent 1: classid 1:1 htb rate {}kbit prio 5'.format(iface, upload_speed),
+
+                # high prio class 1:10
+                'sudo tc class add dev {} parent 1:1 classid 1:10 htb rate {}kbit ceil {}kbit prio 1'
+                .format(iface, 40 * upload_speed // 100, 95* upload_speed // 100),
+
+                # bulk and default calss 1:20 - gets slightly less traffic and a lower priority
+                'sudo tc class add dev {} parent 1:1 classid 1:20 htb rate {}kbit ceil {}kbit prio 2'
+                .format(iface, 40 * upload_speed // 100, 95 * upload_speed // 100),
+
+                # traffic we hate
+                'sudo tc class add dev {} parent 1:1 classid 1:30 htb rate {}kbit ceil {}kbit prio 3'
+                .format(iface, 20 * upload_speed // 100, 90 * upload_speed // 100),
+
+                # all get stochastic fairness
+                'sudo tc qdisc add dev {} parent 1:10 handle 10: sfq perturb 10 quantum {}'
+                .format(iface, cfg['quantum']),
+                'sudo tc qdisc add dev {} parent 1:20 handle 20: sfq perturb 10 quantum {}'
+                .format(iface, cfg['quantum']),
+                'sudo tc qdisc add dev {} parent 1:30 handle 30: sfq perturb 10 quantum {}'
+                .format(iface, cfg['quantum']),
+
+                # TOS min delay (ssh, not scp) in 1:10
+                'sudo tc filter add dev {} parent 1: protocol ip prio 10 u32 match ip tos 0x10 0xff flowid 1:10'
+                .format(iface),
+
+                # ICMP (ip protocol 1) in the interactive class 1:10 so we can do measurements & impress our friend
+                'sudo tc filter add dev {} parent 1: protocol ip prio 11 u32 match ip protocol 1 0xff flowid 1:10'
+                .format(iface),
+
+                # prioritize small packets (<64 bytes)
+                'sudo tc filter add dev {} parent 1: protocol ip prio 12 u32 match ip protocol 6 0xff match u8'
+                ' 0x05 0x0f at 0 match u16 0x0000 0xffc0 at 2 flowid 1:10'.format(iface),
+
+                # non-priority host src
+                'sudo tc filter add dev {} parent 1: protocol ip prio 16 u32 match ip src {} flowid 1:30'
+                .format(iface, 80),
+
+                # reset is 'non-interactive' i.e. 'bulk' and ends up in 1:20
+                'sudo tc filter add dev {} parent 1: protocol ip prio 10 u32 match ip dst 0.0.0.0/0 flowid 1:20'
+                .format(iface)
+            ]
+
+            rcode, _, _ = util.run_cmd_on_diego_cell(
+                app_instance['diego_id'],
+                '\n'.join(cmds)
+            )
+            if rcode:
+                logger.error('Failed to limit bandwidth, received error code %d.', rcode)
+                self.unmanipulate_network()
+                return rcode
+        return 0
+
+    def unmanipulate_network(self):
+        """
+        Undo traffic manipulation changes to the application and its services.
+        """
+        for app_instance in self.instances:
+            cmds = [
+                'sudo tc qdisc del dev {} root'.format(app_instance['diego_vi']),
+                'sudo tc qdisc del dev {} ingress'.format(app_instance['diego_vi'])
+            ]
+            util.run_cmd_on_diego_cell(
+                app_instance['diego_id'],
+                '\n'.join(cmds)
+            )
 
     def get_services_by_type(self, service_type):
         """
@@ -273,7 +406,7 @@ def find_application_guid(appname):
     assert appname
     cfg = Config()
     cmd = '{} app {} --guid'.format(cfg['cf']['cmd'], appname)
-    rcode, stdout, _ = run_cmd(cmd)
+    rcode, stdout, _ = util.run_cmd(cmd)
     guid = stdout.split('\n')[0].rstrip('\r\n')
     if rcode:
         sys.exit("Failed retrieving the GUID for the specified app. Make sure {} is in this space!".format(appname))
@@ -288,8 +421,8 @@ def find_application_instances(app_guid):
     :return: Dict[String, DiegoHost]; The diego-cells which host this app and their associated sub-containers.
     """
     cfg = Config()
-    cmd = 'cfdot actual-lrp-groups | grep --color=never {}\nexit'.format(app_guid)
-    rcode, stdout, _ = run_cmd_on_diego_cell(cfg['bosh']['cfdot-dc'], cmd)
+    cmd = 'cfdot actual-lrp-groups | grep --color=never {}'.format(app_guid)
+    rcode, stdout, _ = util.run_cmd_on_diego_cell(cfg['bosh']['cfdot-dc'], cmd)
 
     if rcode:
         logger.error("Failed retrieving LRP data from %s.", cfg['bosh']['cfdot-dc'])
@@ -298,7 +431,7 @@ def find_application_instances(app_guid):
     instances = []
 
     # for each instance, find information about where it is hosted and its connected ports
-    for instance in extract_json(stdout):
+    for instance in util.extract_json(stdout):
         instance = instance['instance']
 
         if instance['state'] != 'RUNNING':
@@ -323,7 +456,7 @@ def find_application_instances(app_guid):
         # Lookup the diego-cell's VM ID in the bosh deployment
         cmd = r"{} -e {} -d {} vms | egrep '\s{}\s' | egrep -o '^diego.cell/[a-z0-9-]*'" \
             .format(cfg['bosh']['cmd'], cfg['bosh']['env'], cfg['bosh']['cf-dep'], diego_ip.replace('.', r'\.'))
-        rcode, stdout, _ = run_cmd(cmd)
+        rcode, stdout, _ = util.run_cmd(cmd)
         if rcode:
             logger.warning("Failed retrieving VM information from BOSH for %s.", diego_ip)
             diego_id = None
@@ -331,14 +464,28 @@ def find_application_instances(app_guid):
             diego_id = stdout.split('\n')[0].rstrip('\r\n')
             logger.debug("Hosting diego-cell VM: %s.", diego_id)
 
+        # Lookup the virtual network interface
+        _, stdout, _ = util.run_cmd_on_diego_cell(diego_id, 'ip a')
+        stdout = util.group_lines_by_hanging_indent(stdout)
+        index = util.find_string_in_grouping(stdout, cont_ip.replace('.', r'\.'))
+        if not index:
+            logger.warning("Could not find virtual interface!")
+            diego_vi = None
+        else:
+            diego_vi = stdout[index[0]][0]  # want to get parent of the match
+            match = re.match(r'\d+: ([\w-]+)(@[\w-]+)?:', diego_vi)
+            assert match  # This should never fail, so the regex must be wrong!
+            diego_vi = match[1]
+            logger.debug("Hosting diego-cell Virtual Interface: %s", diego_vi)
+
         # Lookup the Container ID
-        cmd = "cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1 && exit".format(cont_ip)
-        rcode, stdout, _ = run_cmd_on_diego_cell(diego_id, cmd)
+        cmd = "cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1".format(cont_ip)
+        rcode, stdout, _ = util.run_cmd_on_diego_cell(diego_id, cmd)
         if rcode:
             logger.error("Failed retrieving container GUID from %s.", diego_id)
             cont_id = None
         else:
-            cont_id = extract_json(stdout)[0]['data']['container-guid']
+            cont_id = util.extract_json(stdout)[0]['data']['container-guid']
             logger.debug("Hosting container GUID: %s.", cont_id)
 
         # Record the app instance information
@@ -347,7 +494,8 @@ def find_application_instances(app_guid):
             diego_ip=diego_ip,
             cont_id=cont_id,
             cont_ip=cont_ip,
-            app_ports=app_ports
+            app_ports=app_ports,
+            diego_vi=diego_vi
         )
         instances.append(app_instance)
         logger.info("Found instance: %s", app_instance)
@@ -361,11 +509,11 @@ def find_application_services(appname):
     :return: Dict[String, Service]; The list of all services bound to this application.
     """
     cfg = Config()
-    rcode, stdout, _ = run_cmd('{} env {}'.format(cfg['cf']['cmd'], appname))
+    rcode, stdout, _ = util.run_cmd('{} env {}'.format(cfg['cf']['cmd'], appname))
     if rcode:
         sys.exit("Failed to query application environment variables.")
 
-    json_objs = extract_json(stdout)
+    json_objs = util.extract_json(stdout)
     if not json_objs:
         sys.exit("Error reading output from `cf env`")
 

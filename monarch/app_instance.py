@@ -9,6 +9,7 @@ class AppInstance(dict):
 
     diego_id: str; ID string of the Diego Cell which hosts this app instance.
     diego_ip: str; IP of the Diego Cell which hosts this app instance.
+    diego_vi: str; Name of the virtual network interface on the diego cell for this application instance.
     cont_id: str; GUID of the Garden Container which hosts this app instance.
     cont_ip: str; IP of the Garden Container which hosts this app instance.
     app_ports: set[(int, int)]; Ports the application instance is bound to (DiegoPort, ContainerPort).

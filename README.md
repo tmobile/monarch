@@ -55,6 +55,7 @@ it is included within the experiments for Chaos Toolkit.
 diego-cells.
 - `service-whitelist`: List of service types which should be ignored. These must be the names displayed in the cf-cli
 marketplace.
+- `quantum`: The quantum to use when configuring qdisc perturbance. The recommended `6000` should work without issue.
 
 Sample config.yml or `cfg` values for Chaos Toolkit.
 
@@ -72,6 +73,7 @@ container-port-whitelist:
 host-port-whitelist: []
 service-whitelist:
  - logger
+quantum: 6000
 ```
 
 
@@ -113,7 +115,8 @@ The following is a sample, Chaos-Toolkit experiment file to block all traffic to
     },
     "container-port-whitelist": [22, 2222],
     "host-port-whitelist": [],
-    "service-whitelist": ["T-Logger"]
+    "service-whitelist": ["T-Logger"],
+    "quantum": 6000
   },
   "steady-state-hypothesis": {
     "title": "We can access the application and other neighboring applications (This should fail because we block all traffic)",

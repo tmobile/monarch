@@ -118,3 +118,68 @@ def unblock_service(org: str, space: str, appname: str, service_name: str, confi
     :return: A JSON Object representing the application which was targeted.
     """
     return unblock_services(org, space, appname, services=[service_name], configuration=configuration)
+
+
+def manipulate_network(org: str, space: str, appname: str, configuration: Configuration,
+                       latency: int = None, latency_sd: int = None, loss: float = None, loss_r: float = None,
+                       duplication: float = None, corruption: float = None):
+    """
+    Manipulate the network traffic to the application and its services. This will not work simultaneously with
+    network shaping.
+
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param configuration: Configuration; Configuration details, see `README.md`.
+    :param latency: int; Latency to introduce in milliseconds.
+    :param latency_sd: int; Standard deviation of the latency in milliseconds, if None, there will be no variance.
+    With relatively large variance values, packet reordering will occur.
+    :param loss: float; Percent in the range [0, 1] of packets which should be dropped/lost.
+    :param loss_r: float; Correlation coefficient in the range [0, 1] of the packet loss.
+    :param duplication: float; Percent in the range [0, 1] of packets which should be duplicated.
+    :param corruption: float; Percent in the range [0, 1] of packets which should be corrupted.
+    :return: A JSON Object representing the application which was targeted.
+    """
+    return run_ctk(
+        lambda app: app.manipulate_network(
+            latency=latency,
+            latency_sd=latency_sd,
+            loss=loss,
+            loss_r=loss_r,
+            duplication=duplication,
+            corruption=corruption
+        ),
+        configuration, org, space, appname,
+        "Manipulating network traffic to {}.".format(appname)
+    )
+
+
+def shape_network(org: str, space: str, appname: str, configuration: Configuration, upload_speed: int):
+    """
+    Impose bandwidth limits on the application. This will not work simultaneously with other network traffic
+    manipulations and will also be undone by calling `unmanipulate_network`.
+
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param configuration: Configuration; Configuration details, see `README.md`.
+    :param upload_speed: The maximum upload speed in kilobits per second. (Must be >=10)
+    :return: A JSON Object representing the application which was targeted.
+    """
+    return run_ctk(
+        lambda app: app.shape_network(upload_speed),
+        configuration, org, space, appname,
+        "Imposing bandwidth limits on {}.".format(appname)
+    )
+
+
+def unmanipulate_network(org: str, space: str, appname: str, configuration: Configuration):
+    """
+    Undo traffic manipulation changes to the application and its services.
+    :return: A JSON Object representing the application which was targeted.
+    """
+    return run_ctk(
+        lambda app: app.unmanipulate_network(),
+        configuration, org, space, appname,
+        "Removing alterations imposed on network traffic to {}.".format(appname)
+    )
