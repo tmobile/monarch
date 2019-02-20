@@ -291,7 +291,7 @@ class App:
         Code ported from https://github.com/magnific0/wondershaper/.
 
         :param upload_speed: The maximum upload speed in kilobits per second. (Must be >=10)
-        :return: int; A returncode if any of the bosh ssh instances do not return 0
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         assert upload_speed >= 10
         cfg = Config()
@@ -367,6 +367,45 @@ class App:
                 app_instance['diego_id'],
                 '\n'.join(cmds)
             )
+
+    def kill_monit_process(self, process):
+        """
+        Kill a monit managed process on all diego cells this application is hosted on. Make sure to bring the process
+        back up afterwords!
+        :param process: str; Name of the monit job to kill.
+        :return: int; A returncode if any of the bosh ssh instances do not return 0.
+        """
+        for app_instance in self.instances:
+            d_id = app_instance['diego_id']
+            rcode, stdout, _ = util.run_cmd_on_diego_cell(
+                d_id, 'find /var/vcap/sys/run | grep {} | grep --color=never pid'.format(process)
+            )
+            pid_files = list(filter(  # filter out garbage ssh lines
+                lambda l: ('/var/vcap/sys/run' in l) and ('find /var/vcap/sys/run' not in l),
+                stdout.splitlines()
+            ))
+            if rcode or not pid_files:
+                logger.error("Encountered error when discovering monit process.")
+                return rcode
+            logger.debug("Found pid files %s for %s on %s.", pid_files, process, d_id)
+
+            cmds = ['sudo /var/vcap/bosh/bin/monit unmonitor {}'.format(process)]
+            cmds.extend(['sudo kill $(cat {})'.format(pf) for pf in pid_files])
+            rcode, _, _ = util.run_cmd_on_diego_cell(d_id, '\n'.join(cmds))
+            if rcode:
+                logger.error("Encountered error killing monit processes!")
+                self.start_monit_process(process)
+                return rcode
+            return 0
+
+    def start_monit_process(self, process):
+        """
+        Start a monit process on all diego cells this application is hosted on.
+        :param process: str; Name of the monit job to kill.
+        """
+        for app_instance in self.instances:
+            d_id = app_instance['diego_id']
+            util.run_cmd_on_diego_cell(d_id, 'sudo /var/vcap/bosh/bin/monit start {}'.format(process))
 
     def get_services_by_type(self, service_type):
         """

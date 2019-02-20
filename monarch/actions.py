@@ -176,10 +176,52 @@ def shape_network(org: str, space: str, appname: str, configuration: Configurati
 def unmanipulate_network(org: str, space: str, appname: str, configuration: Configuration):
     """
     Undo traffic manipulation changes to the application and its services.
+
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param configuration: Configuration; Configuration details, see `README.md`.
     :return: A JSON Object representing the application which was targeted.
     """
     return run_ctk(
         lambda app: app.unmanipulate_network(),
         configuration, org, space, appname,
         "Removing alterations imposed on network traffic to {}.".format(appname)
+    )
+
+
+def kill_monit_process(org: str, space: str, appname: str, configuration: Configuration, process: str):
+    """
+    Kill a monit managed process on all diego cells the application is hosted on. Make sure to bring the process back
+    up afterwords!
+
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param configuration: Configuration; Configuration details, see `README.md`.
+    :param process: str; Name of the monit job to kill.
+    :return: A JSON Object representing the application which was targeted.
+    """
+    return run_ctk(
+        lambda app: app.kill_monit_process(process),
+        configuration, org, space, appname,
+        "Killing monit process {}.".format(process)
+    )
+
+
+def start_monit_process(org: str, space: str, appname: str, configuration: Configuration, process: str):
+    """
+    Start a monit process on all diego cells the application is hosted on.
+
+    :param org: String; Cloud Foundry organization containing the application.
+    :param space: String; Cloud Foundry space containing the application.
+    :param appname: String; Application in Cloud Foundry which is to be targeted.
+    :param configuration: Configuration; Configuration details, see `README.md`.
+    :param process: str; Name of the monit job to kill.
+    :return: A JSON Object representing the application which was targeted.
+    """
+    return run_ctk(
+        lambda app: app.start_monit_process(process),
+        configuration, org, space, appname,
+        "Starting monit process {}.".format(process)
     )
