@@ -34,7 +34,7 @@ class App:
             logger.error("Failed to target org %s and space %s!", org, space)
             return None
         app = App(org, space, appname)
-        if app.find_guid() and app.find_instances() and app.find_services():
+        if app.find_guid() and app.find_instances() and app.find_services() is not None:
             logger.debug(json.dumps(app.serialize(), indent=2))
             return app
         return None
@@ -457,7 +457,7 @@ def find_application_guid(appname):
 def find_application_instances(app_guid):
     """
     Find the containers which host an application by using cfdot.
-    :return: Dict[String, DiegoHost]; The diego-cells which host this app and their associated sub-containers.
+    :return: List[AppInstance]; The app instances app and their associated hosts.
     """
     cfg = Config()
     cmd = 'cfdot actual-lrp-groups | grep --color=never {}'.format(app_guid)
@@ -545,7 +545,7 @@ def find_application_services(appname):
     """
     Discover all services bound to an application. This will use `cf env` and parse the output for VCAP_SERVICES.
     :param appname: String; The name of the app to deserialize.
-    :return: Dict[String, Service]; The list of all services bound to this application.
+    :return: List[Service]; The list of all services bound to this application.
     """
     cfg = Config()
     rcode, stdout, _ = util.run_cmd('{} env {}'.format(cfg['cf']['cmd'], appname))
@@ -561,7 +561,8 @@ def find_application_services(appname):
             json_objs.remove(obj)
 
     if len(json_objs) != 1:
-        sys.exit("Could not find VCAP_SERVICES in output.")
+        logger.info("No services found for %s.", appname)
+        return []
 
     services = []
     vservices = json_objs[0]['VCAP_SERVICES']

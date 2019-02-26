@@ -31,8 +31,8 @@ def run_cmd(cmd, stdin=None):
     except Exception as err:
         logger.warning(err)
         return 1, '', ''
-    logger.debug("STDOUT:\n%s", stdout)
-    logger.debug("STDERR:\n%s", stderr)
+    # logger.debug("STDOUT:\n%s", stdout)
+    # logger.debug("STDERR:\n%s", stderr)
     return rcode, stdout, stderr
 
 
