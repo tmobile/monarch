@@ -3,6 +3,20 @@
 This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) (CTK) which can perform targeted experiments
 on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
 
+## Available Experiments
+
+- Block all incoming traffic to the application
+- Block all outgoing traffic from the application to one or more bound services
+- Manipulate all network traffic from an application (including to its services)
+    - Latency
+    - Packet loss
+    - Packet duplication
+    - Packet corruption
+- Impose bandwidth limits on outgoing traffic with network shaping
+- Crash one or more random application instances
+- Kill/start monit processes on hosting diego-cells
+
+
 ## Setup
 
 ### Install

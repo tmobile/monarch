@@ -9,7 +9,7 @@ from monarch.ctk import run_ctk
 
 def block_traffic(org: str, space: str, appname: str, configuration: Configuration) -> Dict[str, Any]:
     """
-    Block all traffic to the application.
+    Block all traffic to the application. (Blocks ingress traffic).
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.
     :param appname: String; Application in Cloud Foundry which is to be targeted.
@@ -58,7 +58,7 @@ def crash_random_instance(org: str, space: str, appname: str, configuration: Con
 
 def block_services(org: str, space: str, appname: str, configuration: Configuration, services=None) -> Dict[str, Any]:
     """
-    Block the application from reaching all its services.
+    Block the application from reaching all its services. (Blocks specific egress traffic).
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.
     :param appname: String; Application in Cloud Foundry which is to be targeted.
@@ -95,7 +95,7 @@ def unblock_services(org: str, space: str, appname: str, configuration: Configur
 def block_service(org: str, space: str, appname: str, service_name: str, configuration: Configuration) ->\
         Dict[str, Any]:
     """
-    Block the application from reaching a specific service.
+    Block the application from reaching a specific service. (Blocks specific egress traffic).
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.
     :param appname: String; Application in Cloud Foundry which is to be targeted.
@@ -124,8 +124,8 @@ def manipulate_network(org: str, space: str, appname: str, configuration: Config
                        latency: int = None, latency_sd: int = None, loss: float = None, loss_r: float = None,
                        duplication: float = None, corruption: float = None):
     """
-    Manipulate the network traffic to the application and its services. This will not work simultaneously with
-    network shaping.
+    Manipulate the network traffic from the application and its services. This will not work simultaneously with
+    network shaping. (Manipulates egress traffic).
 
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.
@@ -156,8 +156,8 @@ def manipulate_network(org: str, space: str, appname: str, configuration: Config
 
 def shape_network(org: str, space: str, appname: str, configuration: Configuration, upload_speed: int):
     """
-    Impose bandwidth limits on the application. This will not work simultaneously with other network traffic
-    manipulations and will also be undone by calling `unmanipulate_network`.
+    Impose bandwidth limits on the application's outgoing traffic. This will not work simultaneously with other
+    network traffic manipulations and will also be undone by calling `unmanipulate_network`.
 
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.

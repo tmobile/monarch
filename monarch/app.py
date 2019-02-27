@@ -139,7 +139,7 @@ class App:
 
     def block(self):
         """
-        Block access to this application on all its known hosts.
+        Block access to this application on all its known hosts. (Blocks ingress traffic).
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for app_instance in self.instances:
@@ -180,7 +180,7 @@ class App:
 
     def block_services(self, services=None):
         """
-        Block this application from accessing its services on all its known hosts.
+        Block this application from accessing its services on all its known hosts. (Blocks specific egress traffic).
         :param services: List[String]; List of service names to block, will target all if unset.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
@@ -240,8 +240,8 @@ class App:
     def manipulate_network(self, *, latency=None, latency_sd=None, loss=None, loss_r=None,
                            duplication=None, corruption=None):
         """
-        Manipulate the network traffic to the application and its services. This will not work simultaneously with
-        network shaping.
+        Manipulate the network traffic from the application and its services. This will not work simultaneously with
+        network shaping. (Manipulates egress traffic).
 
         :param latency: int; Latency to introduce in milliseconds.
         :param latency_sd: int; Standard deviation of the latency in milliseconds, if None, there will be no variance.
@@ -285,8 +285,8 @@ class App:
 
     def shape_network(self, upload_speed):
         """
-        Impose bandwidth limits on the application. This will not work simultaneously with other network traffic
-        manipulations and will also be undone by calling `unmanipulate_network`.
+        Impose bandwidth limits on the application's outgoing traffic. This will not work simultaneously with other
+        network traffic manipulations and will also be undone by calling `unmanipulate_network`.
 
         Code ported from https://github.com/magnific0/wondershaper/.
 
@@ -305,7 +305,7 @@ class App:
 
                 # high prio class 1:10
                 'sudo tc class add dev {} parent 1:1 classid 1:10 htb rate {}kbit ceil {}kbit prio 1'
-                .format(iface, 40 * upload_speed // 100, 95* upload_speed // 100),
+                .format(iface, 40 * upload_speed // 100, 95 * upload_speed // 100),
 
                 # bulk and default calss 1:20 - gets slightly less traffic and a lower priority
                 'sudo tc class add dev {} parent 1:1 classid 1:20 htb rate {}kbit ceil {}kbit prio 2'
