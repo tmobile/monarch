@@ -8,7 +8,9 @@ on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
 - Block general network traffic
     - Block all incoming traffic to the application
     - Block all outgoing traffic from the application
-- Block all outgoing traffic from the application to one or more bound services
+- Block service traffic
+    - Auto-detection of bound services and support for manually specified non-bound services 
+    - Block all outgoing traffic from the application to one or more bound services
 - Manipulate all network traffic from an application (including to its services)
     - Latency
     - Packet loss
@@ -90,6 +92,13 @@ host-port-whitelist: []
 service-whitelist:
  - logger
 quantum: 6000
+services:  # custom service definitions, not needed for bound services
+  - name: google
+    host: google.com
+    ports:
+     - ['tcp', 80]
+     - ['tcp', 443]
+     - ['icmp', 'all']
 ```
 
 

@@ -5,6 +5,7 @@ Cloud foundry Application tools.
 import json
 import re
 import sys
+from socket import gethostbyname
 from random import shuffle
 
 from logzero import logger
@@ -34,6 +35,7 @@ class App:
             logger.error("Failed to target org %s and space %s!", org, space)
             return None
         app = App(org, space, appname)
+        app.add_services_from_cfg()
         if app.find_guid() and app.find_instances() and app.find_services() is not None:
             logger.debug(json.dumps(app.serialize(), indent=2))
             return app
@@ -115,6 +117,42 @@ class App:
         """
         self.services = find_application_services(self.name)
         return self.services
+
+    def add_services_from_cfg(self):
+        """
+        Read any custom services defined in the config and add them.
+        :return: Dict[String, Service]; The list of all services bound to this application.
+        """
+        cfg = Config()
+        if 'services' not in cfg:
+            return self.services
+        for service in cfg['services']:
+            self.add_custom_service(
+                service['name'],
+                service['host'],
+                [tuple(i) for i in service['ports']],
+                service['user'],
+                service['password']
+            )
+        return self.services
+
+    def add_custom_service(self, name, host, ports, user=None, password=None):
+        """
+        Add information about a service used by this application which is not bound through cloud foundry.
+        :param name: str; Name of the service. e.g. 'musicdb'.
+        :param host: str; Address of the service. e.g. 'google.com' or '102.23.53.12'.
+        :param ports: List[Tuple[str, int]]; List of (protocol, port), where protocol should be one of 'tcp', 'udp',
+        'udplite', 'icmp', 'esp', 'ah', or 'sctp'. If 'all' is specified for either the protocol or port, then all of
+        that protocol or port will be blocked.
+        :param user: Optional[str]; Username the app uses to login.
+        :param password: Optional[str]; Password the app uses to login.
+        """
+        hosts = []
+        addr = gethostbyname(host)
+        for (protocol, port) in ports:
+            hosts.append((addr, protocol, port))
+
+        self.services.append(Service(type='custom', name=name, user=user, password=password, hosts=hosts))
 
     def crash_random_instance(self, count=1):
         """
