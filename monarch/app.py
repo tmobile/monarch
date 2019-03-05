@@ -137,18 +137,27 @@ class App:
                 logger.error("Failed to crash application container %s:%s.",
                              app_instance['cont_id'], app_instance['cont_ip'])
 
-    def block(self):
+    def block(self, direction='ingress'):
         """
-        Block access to this application on all its known hosts. (Blocks ingress traffic).
+        Block access to this application on all its known hosts.
+        :param direction: str; Traffic direction to block.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
+        direction = util.parse_direction(direction)
+        assert direction, "Could not parse direction."
+
         for app_instance in self.instances:
             cmds = []
 
             for _, cport in filter(self._app_port_not_whitelisted, app_instance['app_ports']):
                 logger.info("Targeting %s on %s:%d", app_instance['diego_id'], app_instance['cont_ip'], cport)
-                cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp --dport {} -j DROP'
-                            .format(app_instance['cont_ip'], cport))
+
+                if direction in {'ingress', 'both'}:
+                    cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp --dport {} -j DROP'
+                                .format(app_instance['cont_ip'], cport))
+                if direction in {'egress', 'both'}:
+                    cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp --sport {} -j DROP'
+                                .format(app_instance['cont_ip'], cport))
             if not cmds:
                 continue
 
@@ -171,6 +180,9 @@ class App:
             for _, cport in filter(self._app_port_not_whitelisted, app_instance['app_ports']):
                 logger.info("Unblocking %s on %s:%d", app_instance['diego_id'], app_instance['cont_ip'], cport)
                 cmd = 'sudo iptables -D FORWARD -d {} -p tcp --dport {} -j DROP'.format(app_instance['cont_ip'], cport)
+                for _ in range(TIMES_TO_REMOVE):
+                    cmds.append(cmd)
+                cmd = 'sudo iptables -D FORWARD -s {} -p tcp --sport {} -j DROP'.format(app_instance['cont_ip'], cport)
                 for _ in range(TIMES_TO_REMOVE):
                     cmds.append(cmd)
             if not cmds:

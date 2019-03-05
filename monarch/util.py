@@ -209,3 +209,19 @@ def find_string_in_grouping(groups, pattern):
                 index.extend(submatch)
                 return index
     return None
+
+
+def parse_direction(direction):
+    """
+    Use this to standardize parsing the traffic direction strings.
+    :param direction: str; The direction value to parse.
+    :return: Optional[str]; One of 'ingress', 'egress', or 'both'. Returns None if it could not parse the value.
+    """
+    direction = direction.lower()
+    if direction in {'ingress', 'incoming', 'inbound', 'in', 'i'}:
+        return 'ingress'
+    if direction in {'egress', 'outgoing', 'outbound', 'out', 'o'}:
+        return 'egress'
+    if direction in {'both', 'b', 'all', 'a'}:
+        return 'both'
+    return None

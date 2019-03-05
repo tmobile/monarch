@@ -7,19 +7,20 @@ from chaoslib.types import Configuration
 from monarch.ctk import run_ctk
 
 
-def block_traffic(org: str, space: str, appname: str, configuration: Configuration) -> Dict[str, Any]:
+def block_traffic(org: str, space: str, appname: str, configuration: Configuration, direction: str) -> Dict[str, Any]:
     """
-    Block all traffic to the application. (Blocks ingress traffic).
+    Block all traffic to the application.
     :param org: String; Cloud Foundry organization containing the application.
     :param space: String; Cloud Foundry space containing the application.
     :param appname: String; Application in Cloud Foundry which is to be targeted.
     :param configuration: Configuration; Configuration details, see `README.md`.
+    :param direction: str; Traffic direction to block.
     :return: A JSON Object representing the application which was targeted.
     """
     return run_ctk(
-        lambda app: app.block(),
+        lambda app: app.block(direction),
         configuration, org, space, appname,
-        "Blocking all traffic to {}...".format(appname)
+        "Blocking {} traffic to {}...".format(direction, appname)
     )
 
 
