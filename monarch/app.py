@@ -228,13 +228,17 @@ class App:
 
             util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
 
-    def block_services(self, services=None):
+    def block_services(self, services=None, direction='egress'):
         """
-        Block this application from accessing its services on all its known hosts. (Blocks specific egress traffic).
+        Block this application from accessing its services on all its known hosts.
         :param services: List[String]; List of service names to block, will target all if unset.
+        :param direction: str; Traffic direction to block.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         cfg = Config()
+        direction = util.parse_direction(direction)
+        assert direction, "Could not parse direction!"
+
         for app_instance in self.instances:
             cmds = []
             for service in self.services:
@@ -244,11 +248,20 @@ class App:
                     continue
                 logger.info("Blocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
                 for (sip, protocol, port) in service['hosts']:
-                    cmd = 'sudo iptables -I FORWARD 1 -s {} -d {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
-                    if port != 'all':
-                        cmd += ' --dport {}'.format(port)
-                    cmd += ' -j DROP'
-                    cmds.append(cmd)
+                    if direction in {'egress', 'both'}:
+                        cmd = 'sudo iptables -I FORWARD 1 -s {} -d {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                        if port != 'all':
+                            cmd += ' --dport {}'.format(port)
+                        cmd += ' -j DROP'
+                        cmds.append(cmd)
+
+                    if direction in {'ingress', 'both'}:
+                        cmd = 'sudo iptables -I FORWARD 1 -d {} -s {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                        if port != 'all':
+                            cmd += ' --sport {}'.format(port)
+                        cmd += ' -j DROP'
+                        cmds.append(cmd)
+
             if not cmds:
                 continue
             rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
@@ -276,6 +289,13 @@ class App:
                     cmd = 'sudo iptables -D FORWARD -s {} -d {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
                     if port != 'all':
                         cmd += ' --dport {}'.format(port)
+                    cmd += ' -j DROP'
+                    for _ in range(TIMES_TO_REMOVE):
+                        cmds.append(cmd)
+
+                    cmd = 'sudo iptables -D FORWARD -d {} -s {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                    if port != 'all':
+                        cmd += ' --sport {}'.format(port)
                     cmd += ' -j DROP'
                     for _ in range(TIMES_TO_REMOVE):
                         cmds.append(cmd)
