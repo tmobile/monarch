@@ -36,18 +36,46 @@ def run_cmd(cmd, stdin=None):
     return rcode, stdout, stderr
 
 
+def bosh_cli(args, stdin=None, env=None, dep=None):
+    """
+    Call the bosh CLI.
+    :param args: Union[List[str], str]; Arguments for the bosh CLI. This will allow chaining additional commands
+    with '&&', '|', etc.
+    :param env: str; The bosh environment to use. Defaults to config value.
+    :param dep: str; The bosh deployment to use. Defaults to configured cf deployment value.
+    :param stdin: Optional[str]; Input to pipe to the program.
+    :return: int, str, str; Returncode, stdout, stderr.
+    """
+    boshcfg = Config()['bosh']
+    cmd = [boshcfg['cmd'], '-e', env or boshcfg['env'], '-d', dep or boshcfg['cf-dep']]
+    if isinstance(args, list):
+        cmd.extend(args)
+    else:
+        cmd.append(args)
+    cmd = ' '.join(cmd)
+    return run_cmd(cmd, stdin=stdin)
+
+
 def run_cmd_on_diego_cell(dcid, cmd):
     """
-    Run a command in the shell.
+    Run a command in the shell on a diego cell.
     :param dcid: str; Diego-cell ID of the Diego Cell which is to be connected to.
     :param cmd: str; Command to run on the Diego Cell.
     :return: int, str, str; Returncode, stdout, stderr.
     """
-    cfg = Config()
-    return run_cmd(
-        ' '.join([cfg['bosh']['cmd'], '-e', cfg['bosh']['env'], '-d', cfg['bosh']['cf-dep'], 'ssh', dcid]),
-        cmd + '\nexit'
-    )
+    return bosh_cli(['ssh', dcid], cmd + '\nexit')
+
+
+def run_cmd_on_container(dcid, contid, cmd):
+    """
+    Run a command in the shell on a container on a diego cell.
+    :param dcid: str; Diego-cell ID of the Diego Cell running the container.
+    :param contid: str; Container ID of the container which is to be connected to.
+    :param cmd: str; Command to run on the container.
+    :return: int, str, str; Returncode, stdout, stderr.
+    """
+    cmd = ' '.join(['exec', 'sudo', '/var/vcap/packages/runc/bin/runc', 'exec', '-t', contid, '/bin/bash']) + '\n' + cmd
+    return run_cmd_on_diego_cell(dcid, cmd)
 
 
 def cf_target(org, space):

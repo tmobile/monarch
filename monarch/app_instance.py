@@ -2,6 +2,8 @@
 A single application instance which is hosted on a garden container which is on a diego cell.
 """
 
+import monarch.util as util
+
 
 class AppInstance(dict):
     """
@@ -23,3 +25,19 @@ class AppInstance(dict):
         obj = self.copy()
         obj['app_ports'] = [p for p in self['app_ports']]
         return obj
+
+    def run_cmd_on_diego_cell(self, cmd):
+        """
+        Run a command in the shell on the hosting diego cell.
+        :param cmd: str; Command to run on the Diego Cell.
+        :return: int, str, str; Returncode, stdout, stderr.
+        """
+        return util.run_cmd_on_diego_cell(self['diego_id'], cmd)
+
+    def run_cmd_on_container(self, cmd):
+        """
+        Run a command in the shell on the hosting diego cell.
+        :param cmd: str; Command to run on the container.
+        :return: int, str, str; Returncode, stdout, stderr.
+        """
+        return util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd)

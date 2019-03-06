@@ -169,7 +169,7 @@ class App:
                         app_instance['diego_id'], app_instance['cont_ip'], app_instance['cont_id'])
             cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java"\
                 .format(app_instance['cont_id'])
-            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], cmd)
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmd)
 
             if rcode:
                 logger.error("Failed to crash application container %s:%s.",
@@ -199,7 +199,7 @@ class App:
             if not cmds:
                 continue
 
-            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
 
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
@@ -226,7 +226,7 @@ class App:
             if not cmds:
                 continue
 
-            util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
 
     def block_services(self, services=None, direction='egress'):
         """
@@ -264,7 +264,7 @@ class App:
 
             if not cmds:
                 continue
-            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
                 self.unblock_services(services=services)
@@ -346,7 +346,7 @@ class App:
             if corruption:
                 assert 0 <= corruption <= 1
                 cmd.extend(['corrupt', '{}%'.format(corruption * 100)])
-            rcode, _, _ = util.run_cmd_on_diego_cell(app_instance['diego_id'], ' '.join(cmd))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(' '.join(cmd))
             if rcode:
                 logger.error("Failed to manipulate network for app instance with rcode %d!", rcode)
                 self.unmanipulate_network()
@@ -414,10 +414,7 @@ class App:
                 .format(iface)
             ]
 
-            rcode, _, _ = util.run_cmd_on_diego_cell(
-                app_instance['diego_id'],
-                '\n'.join(cmds)
-            )
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
             if rcode:
                 logger.error('Failed to limit bandwidth, received error code %d.', rcode)
                 self.unmanipulate_network()
@@ -433,10 +430,7 @@ class App:
                 'sudo tc qdisc del dev {} root'.format(app_instance['diego_vi']),
                 'sudo tc qdisc del dev {} ingress'.format(app_instance['diego_vi'])
             ]
-            util.run_cmd_on_diego_cell(
-                app_instance['diego_id'],
-                '\n'.join(cmds)
-            )
+            app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
 
     def kill_monit_process(self, process):
         """
@@ -446,9 +440,8 @@ class App:
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for app_instance in self.instances:
-            d_id = app_instance['diego_id']
-            rcode, stdout, _ = util.run_cmd_on_diego_cell(
-                d_id, 'find /var/vcap/sys/run | grep {} | grep --color=never pid'.format(process)
+            rcode, stdout, _ = app_instance.run_cmd_on_diego_cell(
+                'find /var/vcap/sys/run | grep {} | grep --color=never pid'.format(process)
             )
             pid_files = list(filter(  # filter out garbage ssh lines
                 lambda l: ('/var/vcap/sys/run' in l) and ('find /var/vcap/sys/run' not in l),
@@ -457,11 +450,11 @@ class App:
             if rcode or not pid_files:
                 logger.error("Encountered error when discovering monit process.")
                 return rcode
-            logger.debug("Found pid files %s for %s on %s.", pid_files, process, d_id)
+            logger.debug("Found pid files %s for %s on %s.", pid_files, process, app_instance['diego_id'])
 
             cmds = ['sudo /var/vcap/bosh/bin/monit unmonitor {}'.format(process)]
             cmds.extend(['sudo kill $(cat {})'.format(pf) for pf in pid_files])
-            rcode, _, _ = util.run_cmd_on_diego_cell(d_id, '\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
             if rcode:
                 logger.error("Encountered error killing monit processes!")
                 self.start_monit_process(process)
@@ -474,8 +467,7 @@ class App:
         :param process: str; Name of the monit job to kill.
         """
         for app_instance in self.instances:
-            d_id = app_instance['diego_id']
-            util.run_cmd_on_diego_cell(d_id, 'sudo /var/vcap/bosh/bin/monit start {}'.format(process))
+            app_instance.run_cmd_on_diego_cell('sudo /var/vcap/bosh/bin/monit start {}'.format(process))
 
     def get_services_by_type(self, service_type):
         """
