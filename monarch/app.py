@@ -10,7 +10,7 @@ from random import shuffle
 
 from logzero import logger
 
-from monarch import TIMES_TO_REMOVE
+from monarch import TIMES_TO_REMOVE, bosh
 from monarch.app_instance import AppInstance
 from monarch.config import Config
 from monarch.service import Service
@@ -249,14 +249,16 @@ class App:
                 logger.info("Blocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
                 for (sip, protocol, port) in service['hosts']:
                     if direction in {'egress', 'both'}:
-                        cmd = 'sudo iptables -I FORWARD 1 -s {} -d {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                        cmd = 'sudo iptables -I FORWARD 1 -s {} -d {} -p {}'\
+                            .format(app_instance['cont_ip'], sip, protocol)
                         if port != 'all':
                             cmd += ' --dport {}'.format(port)
                         cmd += ' -j DROP'
                         cmds.append(cmd)
 
                     if direction in {'ingress', 'both'}:
-                        cmd = 'sudo iptables -I FORWARD 1 -d {} -s {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                        cmd = 'sudo iptables -I FORWARD 1 -d {} -s {} -p {}'\
+                            .format(app_instance['cont_ip'], sip, protocol)
                         if port != 'all':
                             cmd += ' --sport {}'.format(port)
                         cmd += ' -j DROP'
@@ -518,29 +520,24 @@ def find_application_guid(appname):
 
 def find_application_instances(app_guid):
     """
-    Find the containers which host an application by using cfdot.
+    Finds the instances of an application and extracts the relevant information.
     :return: List[AppInstance]; The app instances app and their associated hosts.
     """
     cfg = Config()
-    cmd = 'cfdot actual-lrp-groups | grep --color=never {}'.format(app_guid)
-    rcode, stdout, _ = util.run_cmd_on_diego_cell(cfg['bosh']['cfdot-dc'], cmd)
-
-    if rcode:
-        logger.error("Failed retrieving LRP data from %s.", cfg['bosh']['cfdot-dc'])
-        return None
-
-    instances = []
 
     # for each instance, find information about where it is hosted and its connected ports
-    for instance in util.extract_json(stdout):
-        instance = instance['instance']
-
+    instances = []
+    raw_apps = bosh.get_apps()
+    if not raw_apps:
+        return None
+    for instance in raw_apps:
+        if instance['app_guid'] != app_guid:
+            continue
         if instance['state'] != 'RUNNING':
             continue
-
         diego_ip = instance['address']
         cont_ip = instance['instance_address']
-        diego_id = instance['cell_id']
+        diego_id = 'diego_cell/' + instance['cell_id']
         app_ports = set()  # ports the application is listening on within the container
 
         for ports in instance['ports']:

@@ -253,3 +253,13 @@ def parse_direction(direction):
     if direction in {'both', 'b', 'all', 'a'}:
         return 'both'
     return None
+
+
+def filter_map(func, iterable):
+    """
+    Standard filter map iterator. Filters anything which is mapped to None.
+    """
+    return filter(
+        lambda i: i is not None,
+        map(func, iterable)
+    )
