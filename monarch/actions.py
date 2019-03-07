@@ -7,7 +7,8 @@ from chaoslib.types import Configuration
 from monarch.ctk import run_ctk
 
 
-def block_traffic(org: str, space: str, appname: str, configuration: Configuration, direction: str = 'ingress') -> Dict[str, Any]:
+def block_traffic(org: str, space: str, appname: str, configuration: Configuration, direction: str = 'ingress') ->\
+        Dict[str, Any]:
     """
     Block all traffic to the application.
     :param org: String; Cloud Foundry organization containing the application.
@@ -57,7 +58,8 @@ def crash_random_instance(org: str, space: str, appname: str, configuration: Con
     )
 
 
-def block_services(org: str, space: str, appname: str, configuration: Configuration, services: Optional[List[str]] = None, direction: str = 'egress') -> Dict[str, Any]:
+def block_services(org: str, space: str, appname: str, configuration: Configuration,
+                   services: Optional[List[str]] = None, direction: str = 'egress') -> Dict[str, Any]:
     """
     Block the application from reaching all its services. (Blocks specific egress traffic).
     :param org: String; Cloud Foundry organization containing the application.
@@ -94,8 +96,8 @@ def unblock_services(org: str, space: str, appname: str, configuration: Configur
     )
 
 
-def block_service(org: str, space: str, appname: str, configuration: Configuration, service_name: str, direction: str = 'egress') ->\
-        Dict[str, Any]:
+def block_service(org: str, space: str, appname: str, configuration: Configuration, service_name: str,
+                  direction: str = 'egress') -> Dict[str, Any]:
     """
     Block the application from reaching a specific service.
     :param org: String; Cloud Foundry organization containing the application.
@@ -106,7 +108,10 @@ def block_service(org: str, space: str, appname: str, configuration: Configurati
     :param direction: String; Traffic direction to block.
     :return: A JSON Object representing the application which was targeted.
     """
-    return block_services(org, space, appname, configuration=configuration, services=[service_name], direction=direction)
+    return block_services(org, space, appname,
+                          configuration=configuration,
+                          services=[service_name],
+                          direction=direction)
 
 
 def unblock_service(org: str, space: str, appname: str, service_name: str, configuration: Configuration) ->\
