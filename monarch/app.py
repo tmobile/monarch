@@ -540,6 +540,7 @@ def find_application_instances(app_guid):
 
         diego_ip = instance['address']
         cont_ip = instance['instance_address']
+        diego_id = instance['cell_id']
         app_ports = set()  # ports the application is listening on within the container
 
         for ports in instance['ports']:
@@ -553,17 +554,6 @@ def find_application_instances(app_guid):
 
             app_ports.add((diego_port, cont_port))
             logger.debug('Found application at %s:%d with container port %d', diego_ip, diego_port, cont_port)
-
-        # Lookup the diego-cell's VM ID in the bosh deployment
-        cmd = r"{} -e {} -d {} vms | egrep '\s{}\s' | egrep -o '^diego.cell/[a-z0-9-]*'" \
-            .format(cfg['bosh']['cmd'], cfg['bosh']['env'], cfg['bosh']['cf-dep'], diego_ip.replace('.', r'\.'))
-        rcode, stdout, _ = util.run_cmd(cmd)
-        if rcode:
-            logger.warning("Failed retrieving VM information from BOSH for %s.", diego_ip)
-            diego_id = None
-        else:
-            diego_id = stdout.split('\n')[0].rstrip('\r\n')
-            logger.debug("Hosting diego-cell VM: %s.", diego_id)
 
         # Lookup the virtual network interface
         _, stdout, _ = util.run_cmd_on_diego_cell(diego_id, 'ip a')
