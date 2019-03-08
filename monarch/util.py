@@ -13,15 +13,24 @@ from monarch.config import Config
 def run_cmd(cmd, stdin=None):
     """
     Run a command in the shell.
-    :param cmd: str; Command to run.
-    :param stdin: Optional[str]; Input to pipe to the program.
+    :param cmd: Union[str, List[str]]; Command to run.
+    :param stdin: Optional[Union[str, List[str]]]; Input to pipe to the program.
     :return: int, str, str; Returncode, stdout, stderr.
     """
+    if isinstance(cmd, list):
+        cmd = ' '.join(cmd)
     logger.debug('$ %s', cmd)
+
+    if isinstance(stdin, list):
+        for line in stdin:
+            logger.debug('$> %s', line)
+        stdin = '\n'.join(stdin)  # outer array of lines
+    elif stdin:
+        logger.debug('$> %s', stdin)
+
     try:
         with Popen(cmd, shell=True, stdin=(PIPE if stdin else None), stdout=PIPE, stderr=PIPE, encoding='utf8') as proc:
             if stdin:
-                logger.debug('$> %s', stdin)
                 stdout, stderr = proc.communicate(input=stdin + '\n', timeout=30)
             else:
                 proc.wait(timeout=30)
@@ -43,7 +52,7 @@ def bosh_cli(args, stdin=None, env=None, dep=None):
     with '&&', '|', etc.
     :param env: str; The bosh environment to use. Defaults to config value.
     :param dep: str; The bosh deployment to use. Defaults to configured cf deployment value.
-    :param stdin: Optional[str]; Input to pipe to the program.
+    :param stdin: Optional[Union[str, List[Union[str, List[str]]]]]; Input to pipe to the program.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     boshcfg = Config()['bosh']
@@ -52,29 +61,36 @@ def bosh_cli(args, stdin=None, env=None, dep=None):
         cmd.extend(args)
     else:
         cmd.append(args)
-    cmd = ' '.join(cmd)
     return run_cmd(cmd, stdin=stdin)
 
 
 def run_cmd_on_diego_cell(dcid, cmd):
     """
-    Run a command in the shell on a diego cell.
+    Run one or more commands in the shell on a diego cell.
     :param dcid: str; Diego-cell ID of the Diego Cell which is to be connected to.
-    :param cmd: str; Command to run on the Diego Cell.
+    :param cmd: Union[str, List[str]]; Command(s) to run on the Diego Cell.
     :return: int, str, str; Returncode, stdout, stderr.
     """
-    return bosh_cli(['ssh', dcid], cmd + '\nexit')
+    if isinstance(cmd, list):
+        cmd.append('exit')
+    else:
+        cmd = [cmd, 'exit']
+    return bosh_cli(['ssh', dcid], cmd)
 
 
 def run_cmd_on_container(dcid, contid, cmd):
     """
-    Run a command in the shell on a container on a diego cell.
+    Run one or more commands in the shell on a container on a diego cell.
     :param dcid: str; Diego-cell ID of the Diego Cell running the container.
     :param contid: str; Container ID of the container which is to be connected to.
-    :param cmd: str; Command to run on the container.
+    :param cmd: Union[str, List[str]]; Command(s) to run on the container.
     :return: int, str, str; Returncode, stdout, stderr.
     """
-    cmd = ' '.join(['exec', 'sudo', '/var/vcap/packages/runc/bin/runc', 'exec', '-t', contid, '/bin/bash']) + '\n' + cmd
+    shell_cmd = 'exec sudo /var/vcap/packages/runc/bin/runc exec -t {} /bin/bash'.format(contid)
+    if isinstance(cmd, list):
+        cmd.insert(0, shell_cmd)
+    else:
+        cmd = [shell_cmd, cmd]
     return run_cmd_on_diego_cell(dcid, cmd)
 
 
@@ -87,7 +103,7 @@ def cf_target(org, space):
     :return: The returncode of the cloud foundry CLI.
     """
     cfg = Config()
-    rcode, _, _ = run_cmd('{} target -o {} -s {}'.format(cfg['cf']['cmd'], org, space))
+    rcode, _, _ = run_cmd([cfg['cf']['cmd'], 'target', '-o', org, '-s', space])
     return rcode
 
 

@@ -29,7 +29,7 @@ class AppInstance(dict):
     def run_cmd_on_diego_cell(self, cmd):
         """
         Run a command in the shell on the hosting diego cell.
-        :param cmd: str; Command to run on the Diego Cell.
+        :param cmd: Union[str, List[str]]; Command(s) to run on the Diego Cell.
         :return: int, str, str; Returncode, stdout, stderr.
         """
         return util.run_cmd_on_diego_cell(self['diego_id'], cmd)
@@ -37,7 +37,7 @@ class AppInstance(dict):
     def run_cmd_on_container(self, cmd):
         """
         Run a command in the shell on the hosting diego cell.
-        :param cmd: str; Command to run on the container.
+        :param cmd: Union[str, List[str]]; Command(s) to run on the container.
         :return: int, str, str; Returncode, stdout, stderr.
         """
         return util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd)

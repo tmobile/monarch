@@ -80,8 +80,10 @@ def get_apps():
     ```
     """
     cfg = Config()
-    rcode, stdout, _ = util.run_cmd_on_diego_cell(cfg['bosh']['cfdot-dc'], 'source /etc/profile.d/cfdot.sh\n'
-                                                                           'cfdot actual-lrp-groups')
+    rcode, stdout, _ = util.run_cmd_on_diego_cell(
+        cfg['bosh']['cfdot-dc'],
+        ['source /etc/profile.d/cfdot.sh', 'cfdot actual-lrp-groups']
+    )
     if rcode:
         logger.error("Failed retrieving actual LRP grups from %s", cfg['bosh']['cfdot-dc'])
         return None

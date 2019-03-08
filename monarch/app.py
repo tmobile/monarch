@@ -199,7 +199,7 @@ class App:
             if not cmds:
                 continue
 
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
 
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
@@ -226,7 +226,7 @@ class App:
             if not cmds:
                 continue
 
-            app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            app_instance.run_cmd_on_diego_cell(cmds)
 
     def block_services(self, services=None, direction='egress'):
         """
@@ -249,24 +249,24 @@ class App:
                 logger.info("Blocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
                 for (sip, protocol, port) in service['hosts']:
                     if direction in {'egress', 'both'}:
-                        cmd = 'sudo iptables -I FORWARD 1 -s {} -d {} -p {}'\
-                            .format(app_instance['cont_ip'], sip, protocol)
+                        cmd = ['sudo', 'iptables', '-I', 'FORWARD', '1', '-s', app_instance['cont_ip'],
+                               '-d', sip, '-p', protocol]
                         if port != 'all':
-                            cmd += ' --dport {}'.format(port)
-                        cmd += ' -j DROP'
-                        cmds.append(cmd)
+                            cmd.extend(['--dport', port])
+                        cmd.extend(['-j', 'DROP'])
+                        cmds.append(' '.join(cmd))
 
                     if direction in {'ingress', 'both'}:
-                        cmd = 'sudo iptables -I FORWARD 1 -d {} -s {} -p {}'\
-                            .format(app_instance['cont_ip'], sip, protocol)
+                        cmd = ['sudo', 'iptables', '-I', 'FORWARD', '1', '-d', app_instance['cont_ip'],
+                               '-s', sip, '-p', protocol]
                         if port != 'all':
-                            cmd += ' --sport {}'.format(port)
-                        cmd += ' -j DROP'
-                        cmds.append(cmd)
+                            cmd.extend(['--sport', port])
+                        cmd.extend(['-j', 'DROP'])
+                        cmds.append(' '.join(cmd))
 
             if not cmds:
                 continue
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
             if rcode:
                 logger.error("Received return code %d from iptables call.", rcode)
                 self.unblock_services(services=services)
@@ -288,22 +288,24 @@ class App:
                     continue
                 logger.info("Blocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
                 for (sip, protocol, port) in service['hosts']:
-                    cmd = 'sudo iptables -D FORWARD -s {} -d {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                    cmd = ['sudo', 'iptables', '-D', 'FORWARD', '-s', app_instance['cont_ip'],
+                           '-d', sip, '-p', protocol]
                     if port != 'all':
-                        cmd += ' --dport {}'.format(port)
-                    cmd += ' -j DROP'
+                        cmd.extend(['--dport', port])
+                    cmd.extend(['-j', 'DROP'])
                     for _ in range(TIMES_TO_REMOVE):
-                        cmds.append(cmd)
+                        cmds.append(' '.join(cmd))
 
-                    cmd = 'sudo iptables -D FORWARD -d {} -s {} -p {}'.format(app_instance['cont_ip'], sip, protocol)
+                    cmd = ['sudo', 'iptables', '-D', 'FORWARD', '-d', app_instance['cont_ip'],
+                           '-s', sip, '-p', protocol]
                     if port != 'all':
-                        cmd += ' --sport {}'.format(port)
-                    cmd += ' -j DROP'
+                        cmd.extend(['--sport', port])
+                    cmd.extend(['-j', 'DROP'])
                     for _ in range(TIMES_TO_REMOVE):
-                        cmds.append(cmd)
+                        cmds.append(' '.join(cmd))
             if not cmds:
                 continue
-            util.run_cmd_on_diego_cell(app_instance['diego_id'], '\n'.join(cmds))
+            util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds)
             # if rcode:
             #     # This is normal because we remove the rule more than one time just in case.
             #     logger.warn("Received return code {} from iptables call.".format(rcode))
@@ -329,7 +331,7 @@ class App:
             return 0
 
         for app_instance in self.instances:
-            cmd = ['sudo', 'tc', 'qdisc', 'add', 'dev', app_instance['diego_vi'], 'root netem']
+            cmd = ['sudo', 'tc', 'qdisc', 'add', 'dev', app_instance['diego_vi'], 'root', 'netem']
             if latency:
                 assert latency > 0
                 cmd.extend(['delay', '{}ms'.format(latency)])
@@ -416,7 +418,7 @@ class App:
                 .format(iface)
             ]
 
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
             if rcode:
                 logger.error('Failed to limit bandwidth, received error code %d.', rcode)
                 self.unmanipulate_network()
@@ -432,7 +434,7 @@ class App:
                 'sudo tc qdisc del dev {} root'.format(app_instance['diego_vi']),
                 'sudo tc qdisc del dev {} ingress'.format(app_instance['diego_vi'])
             ]
-            app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            app_instance.run_cmd_on_diego_cell(cmds)
 
     def kill_monit_process(self, process):
         """
@@ -456,7 +458,7 @@ class App:
 
             cmds = ['sudo /var/vcap/bosh/bin/monit unmonitor {}'.format(process)]
             cmds.extend(['sudo kill $(cat {})'.format(pf) for pf in pid_files])
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell('\n'.join(cmds))
+            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
             if rcode:
                 logger.error("Encountered error killing monit processes!")
                 self.start_monit_process(process)
@@ -510,7 +512,7 @@ def find_application_guid(appname):
     cfg = Config()
     cmd = '{} app {} --guid'.format(cfg['cf']['cmd'], appname)
     rcode, stdout, _ = util.run_cmd(cmd)
-    guid = stdout.split('\n')[0].rstrip('\r\n')
+    guid = stdout.splitlines()[0]
     if rcode:
         sys.exit("Failed retrieving the GUID for the specified app. Make sure {} is in this space!".format(appname))
 
