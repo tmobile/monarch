@@ -5,16 +5,17 @@ Cloud foundry Application tools.
 import json
 import re
 import sys
-from socket import gethostbyname
 from random import shuffle
+from socket import gethostbyname
 
 from logzero import logger
 
-from monarch import TIMES_TO_REMOVE, bosh
-from monarch.app_instance import AppInstance
-from monarch.config import Config
-from monarch.service import Service
+import monarch.pcf.util
 import monarch.util as util
+from monarch.pcf import TIMES_TO_REMOVE, bosh
+from monarch.pcf.app_instance import AppInstance
+from monarch.pcf.config import Config
+from monarch.pcf.service import Service
 
 
 class App:
@@ -31,7 +32,7 @@ class App:
         :param appname: String; the name of the application deployment within cloud foundry.
         :return: App; Instance of App which holds all the discovered information.
         """
-        if util.cf_target(org, space):
+        if monarch.pcf.util.cf_target(org, space):
             logger.error("Failed to target org %s and space %s!", org, space)
             return None
         app = App(org, space, appname)
@@ -305,7 +306,7 @@ class App:
                         cmds.append(' '.join(cmd))
             if not cmds:
                 continue
-            util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds)
+            monarch.pcf.util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds)
             # if rcode:
             #     # This is normal because we remove the rule more than one time just in case.
             #     logger.warn("Received return code {} from iptables call.".format(rcode))
@@ -402,7 +403,7 @@ class App:
                     'sudo tc qdisc add dev {} handle ffff: ingress'.format(iface),
                     'sudo tc filter add dev {} parent ffff: protocol ip prio 1 u32 match ip src '
                     '0.0.0.0/0 police rate {}kbit burst {} drop flowid :1'
-                        .format(iface, upload_limit, burst_size(upload_limit))
+                    .format(iface, upload_limit, burst_size(upload_limit))
                 ])
 
             rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
@@ -545,7 +546,7 @@ def find_application_instances(app_guid):
             logger.debug('Found application at %s:%d with container port %d', diego_ip, diego_port, cont_port)
 
         # Lookup the virtual network interface
-        _, stdout, _ = util.run_cmd_on_diego_cell(diego_id, 'ip a')
+        _, stdout, _ = monarch.pcf.util.run_cmd_on_diego_cell(diego_id, 'ip a')
         stdout = util.group_lines_by_hanging_indent(stdout)
         index = util.find_string_in_grouping(stdout, cont_ip.replace('.', r'\.'))
         if not index:
@@ -560,7 +561,7 @@ def find_application_instances(app_guid):
 
         # Lookup the Container ID
         cmd = "cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1".format(cont_ip)
-        rcode, stdout, _ = util.run_cmd_on_diego_cell(diego_id, cmd)
+        rcode, stdout, _ = monarch.pcf.util.run_cmd_on_diego_cell(diego_id, cmd)
         if rcode:
             logger.error("Failed retrieving container GUID from %s.", diego_id)
             cont_id = None

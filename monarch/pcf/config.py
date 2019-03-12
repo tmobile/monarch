@@ -4,7 +4,7 @@ Global configuration for Monarch.
 
 import json
 import yaml
-from monarch.singleton import Singleton
+from monarch.util import Singleton
 
 
 class Config(dict, metaclass=Singleton):

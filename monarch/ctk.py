@@ -5,8 +5,8 @@ Chaos toolkit utility function(s).
 from chaoslib.exceptions import FailedActivity
 from logzero import logger
 
-from monarch.app import App
-from monarch.config import Config
+from monarch.pcf.app import App
+from monarch.pcf.config import Config
 
 
 def run_ctk(func, cfg, org, space, appname, msg=None):

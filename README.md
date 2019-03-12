@@ -176,7 +176,7 @@ The following is a sample, Chaos-Toolkit experiment file to block all traffic to
       "name": "block-traffic",
       "provider": {
         "type": "python",
-        "module": "monarch.actions",
+        "module": "monarch.pcf.actions",
         "func": "block_traffic",
         "arguments": {
           "org": "sys-tmo",
@@ -192,7 +192,7 @@ The following is a sample, Chaos-Toolkit experiment file to block all traffic to
       "name": "unblock-traffic",
       "provider": {
         "type": "python",
-        "module": "monarch.actions",
+        "module": "monarch.pcf.actions",
         "func": "unblock_traffic",
         "arguments": {
           "org": "sys-tmo",
@@ -211,8 +211,8 @@ For now, there is no CLI interface, instead use an interactive python shell sess
 ### From Python Shell
 Example session:
 ```python
-from monarch.config import Config
-from monarch.app import App
+from monarch.pcf.config import Config
+from monarch.pcf.app import App
 
 Config().load_yaml('config/tt-stg02.yml')
 

@@ -6,8 +6,9 @@ import json
 
 from logzero import logger
 
+import monarch.pcf.util
 from monarch import util
-from monarch.config import Config
+from monarch.pcf.config import Config
 from monarch.util import filter_map
 
 
@@ -33,7 +34,7 @@ def get_vms(env=None, dep=None):
     }
     ```
     """
-    rcode, stdout, _ = util.bosh_cli('vms --json', env=env, dep=dep)
+    rcode, stdout, _ = monarch.pcf.util.bosh_cli('vms --json', env=env, dep=dep)
     if rcode:
         logger.error("Failed retrieving VM information from BOSH.")
         return None
@@ -80,7 +81,7 @@ def get_apps():
     ```
     """
     cfg = Config()
-    rcode, stdout, _ = util.run_cmd_on_diego_cell(
+    rcode, stdout, _ = monarch.pcf.util.run_cmd_on_diego_cell(
         cfg['bosh']['cfdot-dc'],
         ['source /etc/profile.d/cfdot.sh', 'cfdot actual-lrp-groups']
     )

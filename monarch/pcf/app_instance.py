@@ -3,6 +3,7 @@ A single application instance which is hosted on a garden container which is on 
 """
 from logzero import logger
 
+import monarch.pcf.util
 import monarch.util as util
 
 
@@ -33,7 +34,7 @@ class AppInstance(dict):
         :param cmd: Union[str, List[str]]; Command(s) to run on the Diego Cell.
         :return: int, str, str; Returncode, stdout, stderr.
         """
-        return util.run_cmd_on_diego_cell(self['diego_id'], cmd)
+        return monarch.pcf.util.run_cmd_on_diego_cell(self['diego_id'], cmd)
 
     def run_cmd_on_container(self, cmd):
         """
@@ -41,7 +42,7 @@ class AppInstance(dict):
         :param cmd: Union[str, List[str]]; Command(s) to run on the container.
         :return: int, str, str; Returncode, stdout, stderr.
         """
-        return util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd)
+        return monarch.pcf.util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd)
 
     def perform_speedtest(self, server=None):
         """
