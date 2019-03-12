@@ -17,7 +17,9 @@ on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
     - Packet loss
     - Packet duplication
     - Packet corruption
-- Impose bandwidth limits on outgoing traffic with network shaping
+- Impose bandwidth restrictions
+    - Application download bandwidth shaping (using queuing)
+    - Application upload bandwidth limiting (using policing)
 - Perform network speedtest from within hosting containers
 - Crash one or more random application instances
 - Kill/start monit processes on hosting diego-cells

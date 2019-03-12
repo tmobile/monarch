@@ -167,7 +167,7 @@ class App:
         for app_instance in instances:
             logger.info('Crashing app instance at %s with container %s:%s.',
                         app_instance['diego_id'], app_instance['cont_ip'], app_instance['cont_id'])
-            cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java"\
+            cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java" \
                 .format(app_instance['cont_id'])
             rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmd)
 
@@ -357,66 +357,53 @@ class App:
                 return rcode
         return 0
 
-    def shape_network(self, upload_speed):
+    def shape_network(self, download_limit=None, upload_limit=None):
         """
-        Impose bandwidth limits on the application's outgoing traffic. This will not work simultaneously with other
+        Impose bandwidth limits on the application's ingress traffic. This will not work simultaneously with other
         network traffic manipulations and will also be undone by calling `unmanipulate_network`.
 
-        Code ported from https://github.com/magnific0/wondershaper/.
+        TODO: improve upload limiting, right now it is using a policing policy instead of a queuing policy.
 
-        :param upload_speed: The maximum upload speed in kilobits per second. (Must be >=10)
+        See also https://lartc.org/howto/lartc.cookbook.ultimate-tc.html.
+        See also https://github.com/magnific0/wondershaper/.
+
+        :param download_limit: The maximum download speed in kilobits per second.
+        :param upload_limit: The maximum upload speed in kilobits per second. NOTE: If enabled, it will cap out at
+        around 8Mbps.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
-        assert upload_speed >= 10
-        cfg = Config()
+        assert download_limit >= 10
+        if not (download_limit or upload_limit):
+            return 0  # noop
+
+        def burst_size(bandwidth):
+            """
+            Based on specification that for 10Mbps, it requires a 10kbyte buffer.
+            See https://linux.die.net/man/8/tc-tbf.
+            :param bandwidth: Desired bandwith limit in Kbps.
+            :return: The recommended burst size.
+            """
+            mbps = bandwidth / 1000
+            buff_in_kbyte = mbps
+            buff_in_bytes = buff_in_kbyte * 1024
+            return max(int(buff_in_bytes), 100)
 
         for app_instance in self.instances:
             iface = app_instance['diego_vi']
-            cmds = [
-                'sudo tc qdisc add dev {} root handle 1: htb default 20'.format(iface),
+            cmds = []
 
-                'sudo tc class add dev {} parent 1: classid 1:1 htb rate {}kbit prio 5'.format(iface, upload_speed),
-
-                # high prio class 1:10
-                'sudo tc class add dev {} parent 1:1 classid 1:10 htb rate {}kbit ceil {}kbit prio 1'
-                .format(iface, 40 * upload_speed // 100, 95 * upload_speed // 100),
-
-                # bulk and default calss 1:20 - gets slightly less traffic and a lower priority
-                'sudo tc class add dev {} parent 1:1 classid 1:20 htb rate {}kbit ceil {}kbit prio 2'
-                .format(iface, 40 * upload_speed // 100, 95 * upload_speed // 100),
-
-                # traffic we hate
-                'sudo tc class add dev {} parent 1:1 classid 1:30 htb rate {}kbit ceil {}kbit prio 3'
-                .format(iface, 20 * upload_speed // 100, 90 * upload_speed // 100),
-
-                # all get stochastic fairness
-                'sudo tc qdisc add dev {} parent 1:10 handle 10: sfq perturb 10 quantum {}'
-                .format(iface, cfg['quantum']),
-                'sudo tc qdisc add dev {} parent 1:20 handle 20: sfq perturb 10 quantum {}'
-                .format(iface, cfg['quantum']),
-                'sudo tc qdisc add dev {} parent 1:30 handle 30: sfq perturb 10 quantum {}'
-                .format(iface, cfg['quantum']),
-
-                # TOS min delay (ssh, not scp) in 1:10
-                'sudo tc filter add dev {} parent 1: protocol ip prio 10 u32 match ip tos 0x10 0xff flowid 1:10'
-                .format(iface),
-
-                # ICMP (ip protocol 1) in the interactive class 1:10 so we can do measurements & impress our friend
-                'sudo tc filter add dev {} parent 1: protocol ip prio 11 u32 match ip protocol 1 0xff flowid 1:10'
-                .format(iface),
-
-                # prioritize small packets (<64 bytes)
-                'sudo tc filter add dev {} parent 1: protocol ip prio 12 u32 match ip protocol 6 0xff match u8'
-                ' 0x05 0x0f at 0 match u16 0x0000 0xffc0 at 2 flowid 1:10'.format(iface),
-
-                # non-priority host src
-                'sudo tc filter add dev {} parent 1: protocol ip prio 16 u32 match ip src {} flowid 1:30'
-                .format(iface, 80),
-
-                # reset is 'non-interactive' i.e. 'bulk' and ends up in 1:20
-                'sudo tc filter add dev {} parent 1: protocol ip prio 10 u32 match ip dst 0.0.0.0/0 flowid 1:20'
-                .format(iface)
-            ]
+            if download_limit:
+                # Limit container download by limiting the virtual interface's egress traffic
+                cmds.append('sudo tc qdisc add dev {} root tbf rate {}kbit latency {}ms burst {}'
+                            .format(iface, download_limit, 50, burst_size(download_limit)))
+            if upload_limit:
+                # Limit container upload by limiting the virtual interface's ingress traffic
+                cmds.extend([
+                    'sudo tc qdisc add dev {} handle ffff: ingress'.format(iface),
+                    'sudo tc filter add dev {} parent ffff: protocol ip prio 1 u32 match ip src '
+                    '0.0.0.0/0 police rate {}kbit burst {} drop flowid :1'
+                        .format(iface, upload_limit, burst_size(upload_limit))
+                ])
 
             rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
             if rcode:
@@ -430,9 +417,12 @@ class App:
         Undo traffic manipulation changes to the application and its services.
         """
         for app_instance in self.instances:
+            iface = app_instance['diego_vi']
             cmds = [
-                'sudo tc qdisc del dev {} root'.format(app_instance['diego_vi']),
-                'sudo tc qdisc del dev {} ingress'.format(app_instance['diego_vi'])
+                'sudo tc qdisc del dev {} root'.format(iface),
+                'sudo tc filter del dev {} parent ffff: protocol ip prio 1 u32 match ip src 0.0.0.0/0'.format(iface),
+                'sudo tc qdisc del dev {} handle ffff: ingress'.format(iface),
+                'sudo tc qdisc del dev {} ingress'.format(iface)
             ]
             app_instance.run_cmd_on_diego_cell(cmds)
 
