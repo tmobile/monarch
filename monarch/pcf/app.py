@@ -166,15 +166,7 @@ class App:
         instances = instances[:count]
 
         for app_instance in instances:
-            logger.info('Crashing app instance at %s with container %s:%s.',
-                        app_instance['diego_id'], app_instance['cont_ip'], app_instance['cont_id'])
-            cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java" \
-                .format(app_instance['cont_id'])
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmd)
-
-            if rcode:
-                logger.error("Failed to crash application container %s:%s.",
-                             app_instance['cont_id'], app_instance['cont_ip'])
+            app_instance.crash()
 
     def block(self, direction='ingress'):
         """
@@ -182,28 +174,9 @@ class App:
         :param direction: str; Traffic direction to block.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
-        direction = util.parse_direction(direction)
-        assert direction, "Could not parse direction."
-
         for app_instance in self.instances:
-            cmds = []
-
-            for _, cport in filter(self._app_port_not_whitelisted, app_instance['app_ports']):
-                logger.info("Targeting %s on %s:%d", app_instance['diego_id'], app_instance['cont_ip'], cport)
-
-                if direction in {'ingress', 'both'}:
-                    cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp --dport {} -j DROP'
-                                .format(app_instance['cont_ip'], cport))
-                if direction in {'egress', 'both'}:
-                    cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp --sport {} -j DROP'
-                                .format(app_instance['cont_ip'], cport))
-            if not cmds:
-                continue
-
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
-
+            rcode = app_instance.block(direction=direction)
             if rcode:
-                logger.error("Received return code %d from iptables call.", rcode)
                 self.unblock()
                 return rcode
         return 0
@@ -214,20 +187,7 @@ class App:
         times, as defined by `TIMES_TO_REMOVE` to prevent issues if an application was blocked multiple times.
         """
         for app_instance in self.instances:
-            cmds = []
-
-            for _, cport in filter(self._app_port_not_whitelisted, app_instance['app_ports']):
-                logger.info("Unblocking %s on %s:%d", app_instance['diego_id'], app_instance['cont_ip'], cport)
-                cmd = 'sudo iptables -D FORWARD -d {} -p tcp --dport {} -j DROP'.format(app_instance['cont_ip'], cport)
-                for _ in range(TIMES_TO_REMOVE):
-                    cmds.append(cmd)
-                cmd = 'sudo iptables -D FORWARD -s {} -p tcp --sport {} -j DROP'.format(app_instance['cont_ip'], cport)
-                for _ in range(TIMES_TO_REMOVE):
-                    cmds.append(cmd)
-            if not cmds:
-                continue
-
-            app_instance.run_cmd_on_diego_cell(cmds)
+            app_instance.unblock()
 
     def block_services(self, services=None, direction='egress'):
         """
@@ -312,48 +272,17 @@ class App:
             #     logger.warn("Received return code {} from iptables call.".format(rcode))
             #     code = rcode
 
-    def manipulate_network(self, *, latency=None, latency_sd=None, loss=None, loss_r=None,
-                           duplication=None, corruption=None):
+    def manipulate_network(self, **kwargs):
         """
         Manipulate the network traffic from the application and its services. This will not work simultaneously with
         network shaping. (Manipulates egress traffic).
 
-        :param latency: int; Latency to introduce in milliseconds.
-        :param latency_sd: int; Standard deviation of the latency in milliseconds, if None, there will be no variance.
-        With relatively large variance values, packet reordering will occur.
-        :param loss: float; Percent in the range [0, 1] of packets which should be dropped/lost.
-        :param loss_r: float; Correlation coefficient in the range [0, 1] of the packet loss.
-        :param duplication: float; Percent in the range [0, 1] of packets which should be duplicated.
-        :param corruption: float; Percent in the range [0, 1] of packets which should be corrupted.
+        :param kwargs: See `manipulate_network` in `AppInstance`.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
-        if not (latency or loss or duplication or corruption):
-            # if no actions are specified, it is a noop
-            return 0
-
         for app_instance in self.instances:
-            cmd = ['sudo', 'tc', 'qdisc', 'add', 'dev', app_instance['diego_vi'], 'root', 'netem']
-            if latency:
-                assert latency > 0
-                cmd.extend(['delay', '{}ms'.format(latency)])
-                if latency_sd:
-                    assert latency_sd > 0
-                    cmd.extend(['{}ms'.format(latency_sd), 'distribution', 'normal'])
-            if loss:
-                assert 0 <= loss <= 1
-                cmd.extend(['loss', '{}%'.format(loss * 100)])
-                if loss_r:
-                    assert 0 <= loss_r <= 1
-                    cmd.append('{}%'.format(loss_r * 100))
-            if duplication:
-                assert 0 <= duplication <= 1
-                cmd.extend(['duplicate', '{}%'.format(duplication * 100)])
-            if corruption:
-                assert 0 <= corruption <= 1
-                cmd.extend(['corrupt', '{}%'.format(corruption * 100)])
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell(' '.join(cmd))
+            rcode = app_instance.manipulate_network(**kwargs)
             if rcode:
-                logger.error("Failed to manipulate network for app instance with rcode %d!", rcode)
                 self.unmanipulate_network()
                 return rcode
         return 0
@@ -363,52 +292,19 @@ class App:
         Impose bandwidth limits on the application's ingress traffic. This will not work simultaneously with other
         network traffic manipulations and will also be undone by calling `unmanipulate_network`.
 
-        TODO: improve upload limiting, right now it is using a policing policy instead of a queuing policy.
-
-        See also https://lartc.org/howto/lartc.cookbook.ultimate-tc.html.
-        See also https://github.com/magnific0/wondershaper/.
+        See also `shape_network` in `AppInstance`.
 
         :param download_limit: The maximum download speed in kilobits per second.
         :param upload_limit: The maximum upload speed in kilobits per second. NOTE: If enabled, it will cap out at
         around 8Mbps.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
-        assert download_limit >= 10
         if not (download_limit or upload_limit):
             return 0  # noop
 
-        def burst_size(bandwidth):
-            """
-            Based on specification that for 10Mbps, it requires a 10kbyte buffer.
-            See https://linux.die.net/man/8/tc-tbf.
-            :param bandwidth: Desired bandwith limit in Kbps.
-            :return: The recommended burst size.
-            """
-            mbps = bandwidth / 1000
-            buff_in_kbyte = mbps
-            buff_in_bytes = buff_in_kbyte * 1024
-            return max(int(buff_in_bytes), 100)
-
         for app_instance in self.instances:
-            iface = app_instance['diego_vi']
-            cmds = []
-
-            if download_limit:
-                # Limit container download by limiting the virtual interface's egress traffic
-                cmds.append('sudo tc qdisc add dev {} root tbf rate {}kbit latency {}ms burst {}'
-                            .format(iface, download_limit, 50, burst_size(download_limit)))
-            if upload_limit:
-                # Limit container upload by limiting the virtual interface's ingress traffic
-                cmds.extend([
-                    'sudo tc qdisc add dev {} handle ffff: ingress'.format(iface),
-                    'sudo tc filter add dev {} parent ffff: protocol ip prio 1 u32 match ip src '
-                    '0.0.0.0/0 police rate {}kbit burst {} drop flowid :1'
-                    .format(iface, upload_limit, burst_size(upload_limit))
-                ])
-
-            rcode, _, _ = app_instance.run_cmd_on_diego_cell(cmds)
+            rcode, _, _ = app_instance.shape_network(download_limit=download_limit, upload_limit=upload_limit)
             if rcode:
-                logger.error('Failed to limit bandwidth, received error code %d.', rcode)
                 self.unmanipulate_network()
                 return rcode
         return 0
@@ -418,14 +314,7 @@ class App:
         Undo traffic manipulation changes to the application and its services.
         """
         for app_instance in self.instances:
-            iface = app_instance['diego_vi']
-            cmds = [
-                'sudo tc qdisc del dev {} root'.format(iface),
-                'sudo tc filter del dev {} parent ffff: protocol ip prio 1 u32 match ip src 0.0.0.0/0'.format(iface),
-                'sudo tc qdisc del dev {} handle ffff: ingress'.format(iface),
-                'sudo tc qdisc del dev {} ingress'.format(iface)
-            ]
-            app_instance.run_cmd_on_diego_cell(cmds)
+            app_instance.unmanipulate_network()
 
     def kill_monit_process(self, process):
         """
@@ -484,12 +373,6 @@ class App:
                 return service
 
         return None
-
-    @staticmethod
-    def _app_port_not_whitelisted(ports):
-        cfg = Config()
-        return ports[0] not in cfg['host-port-whitelist'] and \
-               ports[1] not in cfg['container-port-whitelist']
 
 
 def find_application_guid(appname):
