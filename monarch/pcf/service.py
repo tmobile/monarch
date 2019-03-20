@@ -82,6 +82,18 @@ class Service(dict):
                 port = pconfig['port']
                 for host in pconfig['hosts']:
                     service['hosts'].add((host, 'tcp', port))
+        elif service['type'] == 'p-circuit-breaker-dashboard':
+            service['user'] = credentials['amqp']['username']
+            service['password'] = credentials['amqp']['password']
+            for hostname in credentials['amqp']['protocols']['amqp']['hosts']:
+                service['hosts'].add((
+                    dnslookup(hostname), 'tcp',
+                    credentials['amqp']['protocols']['amqp']['port']))
+            for hostname in credentials['amqp']['protocols']['management']['hosts']:
+                service['hosts'].add((
+                    dnslookup(hostname), 'tcp',
+                    credentials['amqp']['protocols']['management']['port']
+                ))
         else:
             logger.warning("Unrecognized service '%s'", service['type'])
 
