@@ -1,4 +1,4 @@
-# Monarch
+# ![Monarch](graphics/banner.png)
 
 This is a series of tools for [Chaos Toolkit](https://chaostoolkit.org/) (CTK) which can perform targeted experiments
 on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
