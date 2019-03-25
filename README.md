@@ -27,7 +27,39 @@ on applications deployed in [Cloud Foundry](https://www.cloudfoundry.org/).
 
 ## Setup
 
-### Install
+### Build Dockerfile
+It is recommended that you run Monarch with [Docker](https://www.docker.com/) which you can get
+[here](https://www.docker.com/products/docker-desktop). We have had some issues with cross-platform support for the
+underlying CLIs.
+
+With docker up and running, run the following within the root of the git repository:
+```bash
+# FIRST Run
+docker build -t monarch .
+docker run -it \
+    --name monarch \
+    -v C:\Users\<username>\Documents\certs:/monarch/certs           # Can be a different local path or be omitted
+    -v C:\Users\<username>\Documents\monarch\config:/monarch/config # and create the needed files from within.
+    monarch
+
+# Subsequent Runs
+docker start -ai monarch
+
+# Rebuild Image (You will loose information not in an attached volume)
+docker container rm monarch
+yes | docker image prune
+# goto FIRST Run ;)
+``` 
+
+Note that both certs and config are optional and do not need to be mounted, however, even if you do not have any written
+already, you should mount the volumes to prevent data loss when you destroy the container during the inevitable upgrade
+process.
+
+From within the docker image, you may now use either the python shell to interact with monarch, or chaostollkit which is
+installed automatically when the image is built. You will need to login with cf-cli and bosh-cli before attempting to
+use monarch.
+
+### Install Locally
 To be used from your experiment, this package must first be installed in the Python environment where
 [chaostoolkit](https://chaostoolkit.org/) already exists. This package requires at least
 [Python](https://www.python.org/) version 3.5 (3.6 if using the chaostoolkit interfaces directly), so translate `python`
