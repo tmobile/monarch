@@ -68,13 +68,17 @@ class Service(dict):
             port = match[2] or 'all'
             service['hosts'].add((sip, 'tcp', port))
         elif service['type'] == 'T-Logger':
-            match = re.match(r'syslog://([a-zA-Z0-9_.-]+):(\d+)', credentials['syslog_drain_url'])
+            syslog_drain_url = credentials.get('syslog_drain_url') or service_config['syslog_drain_url']
+            match = re.match(r'syslog://([a-zA-Z0-9_.-]+):(\d+)', syslog_drain_url)
             sip = dnslookup(match[1])
             service['hosts'].add((sip, 'tcp', match[2]))
         elif service['type'] == 'p-mysql':
             service['user'] = credentials['username']
             service['password'] = credentials['password']
             service['hosts'].add((credentials['hostname'], 'tcp', credentials['port']))
+        elif service['type'] == 'p-redis':
+            service['password'] = credentials['password']
+            service['hosts'].add((dnslookup(credentials['host']), 'tcp', credentials['port']))
         elif service['type'] == 'p-rabbitmq':
             service['user'] = credentials['username']
             service['password'] = credentials['password']

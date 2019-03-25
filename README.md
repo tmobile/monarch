@@ -83,10 +83,10 @@ Sample config.yml or `cfg` values for Chaos Toolkit.
 
 ```yaml
 bosh:
-  cmd: bosh2
-  env: bosh-lite
-  cf-dep: cf
-  cfdot-dc: diego-cell/0
+  cmd: bosh2 # bosh CLI to be used
+  env: bosh-lite #environment alias name 
+  cf-dep: cf # Bosh deployment name
+  cfdot-dc: diego_cell/0
 cf:
   cmd: cf
 container-port-whitelist:
@@ -96,13 +96,13 @@ host-port-whitelist: []
 service-whitelist:
  - logger
 quantum: 6000
-services:  # custom service definitions, not needed for bound services
-  - name: google
-    host: google.com
-    ports:
-     - ['tcp', 80]
-     - ['tcp', 443]
-     - ['icmp', 'all']
+#services:  # custom service definitions, not needed for bound services
+#  - name: google
+#    host: google.com
+#    ports:
+#     - ['tcp', 80]
+#     - ['tcp', 443]
+#     - ['icmp', 'all']
 ```
 
 
@@ -119,9 +119,9 @@ just use `chaos run exp.json` from any directory.
 Currently, the Chaos Toolkit interface does not support saving information about what was targeted, which should be okay
 for the time being as we have yet to observe Cloud Foundry moving app instances as a result of any of these actions.
 Though it is a good reason to be cautious of its use as it simply re-queries again when unblocking, so if something did
-move, it will not remove the old rule in the location the app is not longer at. If you need to manually verify that all 
+move, it will not remove the old rule in the location the app is no longer at. If you need to manually verify that all 
 of the rules have been removed, you can go through each diego-cell in the Cloud Foundry deployment and run
-`iptables -L | grep DROP` to see if any rules are lingering. (This scrip *should* be the only source of `DROP` rules).
+`iptables -L | grep DROP` to see if any rules are lingering. (This script *should* be the only source of `DROP` rules).
 
 The following is a sample, Chaos-Toolkit experiment file to block all traffic to the application.
 

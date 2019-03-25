@@ -86,6 +86,23 @@ class App:
     def __repr__(self):
         return 'App({})'.format(self.get_id())
 
+    def rediscover(self):
+        """
+        Re-discover this app, useful after crashing instances.
+        Will undo all manipulations first.
+        """
+        self.undo_all()
+        new_app = App.discover(self.org, self.space, self.name)
+        self.__dict__ = new_app.__dict__
+
+    def undo_all(self):
+        """
+        Undo all manipulations to this application.
+        """
+        self.unblock()
+        self.unblock_services()
+        self.unmanipulate_network()
+
     def serialize(self):
         """
         Convert this application instance into a serializable dictionary.
@@ -228,7 +245,7 @@ class App:
                         if port != 'all':
                             cmd.extend(['--dport', port])
                         cmd.extend(['-j', 'DROP'])
-                        cmds.append(' '.join(cmd))
+                        cmds.append(' '.join(map(str, cmd)))
 
                     if direction in {'ingress', 'both'}:
                         cmd = ['sudo', 'iptables', '-I', 'FORWARD', '1', '-d', app_instance['cont_ip'],
@@ -236,7 +253,7 @@ class App:
                         if port != 'all':
                             cmd.extend(['--sport', port])
                         cmd.extend(['-j', 'DROP'])
-                        cmds.append(' '.join(cmd))
+                        cmds.append(' '.join(map(str, cmd)))
 
             if not cmds:
                 continue
@@ -268,7 +285,7 @@ class App:
                         cmd.extend(['--dport', port])
                     cmd.extend(['-j', 'DROP'])
                     for _ in range(TIMES_TO_REMOVE):
-                        cmds.append(' '.join(cmd))
+                        cmds.append(' '.join(map(str, cmd)))
 
                     cmd = ['sudo', 'iptables', '-D', 'FORWARD', '-d', app_instance['cont_ip'],
                            '-s', sip, '-p', protocol]
@@ -276,7 +293,7 @@ class App:
                         cmd.extend(['--sport', port])
                     cmd.extend(['-j', 'DROP'])
                     for _ in range(TIMES_TO_REMOVE):
-                        cmds.append(' '.join(cmd))
+                        cmds.append(' '.join(map(str, cmd)))
             if not cmds:
                 continue
             monarch.pcf.util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds)
@@ -316,7 +333,7 @@ class App:
             return 0  # noop
 
         for app_instance in self.instances:
-            rcode, _, _ = app_instance.shape_network(download_limit=download_limit, upload_limit=upload_limit)
+            rcode = app_instance.shape_network(download_limit=download_limit, upload_limit=upload_limit)
             if rcode:
                 self.unmanipulate_network()
                 return rcode
@@ -456,7 +473,7 @@ def find_application_instances(app_guid):
             logger.debug("Hosting diego-cell Virtual Interface: %s", diego_vi)
 
         # Lookup the Container ID
-        cmd = "cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1".format(cont_ip)
+        cmd = "sudo cat /var/vcap/sys/log/rep/rep.stdout.log | grep {} | tail -n 1".format(cont_ip)
         rcode, stdout, _ = monarch.pcf.util.run_cmd_on_diego_cell(diego_id, cmd)
         if rcode:
             logger.error("Failed retrieving container GUID from %s.", diego_id)

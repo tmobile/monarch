@@ -15,11 +15,11 @@
     limitations under the License.
 """
 from logzero import logger
+import requests
 
 import monarch.pcf.util
 import monarch.util as util
 from monarch.pcf import TIMES_TO_REMOVE
-from monarch.pcf.config import Config
 
 
 class AppInstance(dict):
@@ -66,9 +66,7 @@ class AppInstance(dict):
         """
         logger.info('Crashing app instance at %s with container %s:%s.',
                     self['diego_id'], self['cont_ip'], self['cont_id'])
-        cmd = "sudo /var/vcap/packages/runc/bin/runc exec {} /usr/bin/pkill -SIGSEGV java" \
-            .format(self['cont_id'])
-        rcode, _, _ = self.run_cmd_on_diego_cell(cmd)
+        rcode, _, _ = self.run_cmd_on_container('pkill -SIGSEGV java')
 
         if rcode:
             logger.error("Failed to crash application container %s:%s.",
@@ -87,15 +85,11 @@ class AppInstance(dict):
         assert direction, "Could not parse direction!"
 
         cmds = []
-        for _, cport in filter(self._app_port_not_whitelisted, self['app_ports']):
-            logger.info("Targeting %s on %s:%d", self['diego_id'], self['cont_ip'], cport)
-
-            if direction in {'ingress', 'both'}:
-                cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp --dport {} -j DROP'
-                            .format(self['cont_ip'], cport))
-            if direction in {'egress', 'both'}:
-                cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp --sport {} -j DROP'
-                            .format(self['cont_ip'], cport))
+        logger.info("Targeting %s on %s", self['diego_id'], self['cont_ip'])
+        if direction in {'ingress', 'both'}:
+            cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp -j DROP'.format(self['cont_ip']))
+        if direction in {'egress', 'both'}:
+            cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp -j DROP'.format(self['cont_ip']))
         if not cmds:
             return 0  # noop
         rcode, _, _ = self.run_cmd_on_diego_cell(cmds)
@@ -110,15 +104,13 @@ class AppInstance(dict):
         multiple times, as defined by `TIMES_TO_REMOVE` to prevent issues if an application was blocked multiple times.
         """
         cmds = []
-
-        for _, cport in filter(self._app_port_not_whitelisted, self['app_ports']):
-            logger.info("Unblocking %s on %s:%d", self['diego_id'], self['cont_ip'], cport)
-            cmd = 'sudo iptables -D FORWARD -d {} -p tcp --dport {} -j DROP'.format(self['cont_ip'], cport)
-            for _ in range(TIMES_TO_REMOVE):
-                cmds.append(cmd)
-            cmd = 'sudo iptables -D FORWARD -s {} -p tcp --sport {} -j DROP'.format(self['cont_ip'], cport)
-            for _ in range(TIMES_TO_REMOVE):
-                cmds.append(cmd)
+        logger.info("Unblocking %s on %s", self['diego_id'], self['cont_ip'])
+        cmd = 'sudo iptables -D FORWARD -d {} -p tcp -j DROP'.format(self['cont_ip'])
+        for _ in range(TIMES_TO_REMOVE):
+            cmds.append(cmd)
+        cmd = 'sudo iptables -D FORWARD -s {} -p tcp -j DROP'.format(self['cont_ip'])
+        for _ in range(TIMES_TO_REMOVE):
+            cmds.append(cmd)
 
         self.run_cmd_on_diego_cell(cmds)
 
@@ -197,7 +189,6 @@ class AppInstance(dict):
             buff_in_bytes = buff_in_kbyte * 1024
             return max(int(buff_in_bytes), 100)
 
-
         iface = self['diego_vi']
         cmds = []
 
@@ -275,8 +266,12 @@ class AppInstance(dict):
         }
         ```
         """
+        # res = requests.get('https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py')
+        # if not res:
+        #     return None
         _, stdout, _ = self.run_cmd_on_container([
             'cd /tmp',
+            # 'echo "{}" > speedtest.py'.format(res.text.replace('\n', '\\n')),
             'wget https://raw.githubusercontent.com/sivel/speedtest-cli/master/speedtest.py',
             'python speedtest.py --json {}'.format('' if not server else '--server ' + server),
             'rm speedtest.py'
@@ -286,9 +281,3 @@ class AppInstance(dict):
             logger.error("Failed to perform speedtest on %s!", self['cont_id'])
             return None
         return results[0]
-
-    @staticmethod
-    def _app_port_not_whitelisted(ports):
-        cfg = Config()
-        return ports[0] not in cfg['host-port-whitelist'] and \
-               ports[1] not in cfg['container-port-whitelist']
