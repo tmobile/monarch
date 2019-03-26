@@ -19,6 +19,7 @@
 import io
 
 import setuptools
+from monarch import __version__
 
 name = 'monarch'
 desc = 'Chaos Toolkit Extension for Targeted Experiments on Cloud Foundry Apps and Services'
@@ -27,9 +28,8 @@ with io.open('README.md', encoding='utf-8') as strm:
     long_desc = strm.read()
 
 classifiers = [
-    'Development Status :: 2 - Pre-Alpha',
+    'Development Status :: 3 - Alpha',
     'Intended Audience :: Developers',
-    'License :: Freely Distributable',
     'Operating System :: OS Independent',
     'License :: OSI Approved :: Apache-2.0',
     'Programming Language :: Python',
@@ -37,11 +37,9 @@ classifiers = [
     'Programming Language :: Python :: 3.5',
     'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
-    'Programming Language :: Python :: Implementation',
-    'Programming Language :: Python :: Implementation :: CPython'
+    'Programming Language :: Python :: Implementation'
 ]
 author = "Matthew Conover"
-author_email = 'matthew.conover1@t-mobile.com'
 packages = ['monarch']
 
 install_require = []
@@ -50,12 +48,11 @@ with io.open('requirements.txt') as f:
 
 setup_params = dict(
     name=name,
-    version='0.1.0',
+    version=__version__,
     description=desc,
     long_description=long_desc,
     classifiers=classifiers,
     author=author,
-    author_email=author_email,
     packages=packages,
     include_package_data=True,
     install_requires=install_require,
