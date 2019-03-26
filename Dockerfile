@@ -7,6 +7,9 @@ RUN dpkg -i /tmp/cf-cli.deb \
     && apt-get install -f \
     && rm /tmp/cf-cli.deb \
     && apt-get update && apt-get install -y \
+        git \
+        vim \
+        nano \
         bash \
         build-essential \
         zlibc \
@@ -29,7 +32,8 @@ COPY . /monarch
 WORKDIR /monarch
 
 RUN pip install --no-cache-dir -r requirements.txt \
-    && python setup.py install
+    && python setup.py install \
+    && rm -rf monarch.egg-info
 
 VOLUME ["/monarch/config", "/monarch/certs"]
 ENTRYPOINT ["bash"]

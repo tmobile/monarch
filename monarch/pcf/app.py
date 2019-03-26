@@ -50,10 +50,16 @@ class App:
             return None
         app = App(org, space, appname)
         app.add_services_from_cfg()
-        if app.find_guid() and app.find_instances() and app.find_services() is not None:
-            logger.debug(json.dumps(app.serialize(), indent=2))
-            return app
-        return None
+        if not app.find_guid():
+            logger.error("App discovery failed because GUID could not be found!")
+        if not app.find_instances():
+            logger.error("App discovery failed because no application instances could be found!")
+        if app.find_services() is None:
+            logger.error("App discovery failed because there was an error when finding services!")
+
+        logger.info("Successfully discovered %s in %s %s.", appname, org, space)
+        logger.debug(json.dumps(app.serialize(), indent=2))
+        return app
 
     def __init__(self, org, space, appname):
         """
@@ -435,6 +441,7 @@ def find_application_instances(app_guid):
     instances = []
     raw_apps = bosh.get_apps()
     if not raw_apps:
+        logger.warning("No application instances found for %s.", app_guid)
         return None
     for instance in raw_apps:
         if instance['app_guid'] != app_guid:
