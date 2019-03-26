@@ -14,12 +14,14 @@
 
 """ A single application instance which is hosted on a garden container which is on a diego cell.
 """
+from itertools import chain
+
 from logzero import logger
-import requests
 
 import monarch.pcf.util
 import monarch.util as util
 from monarch.pcf import TIMES_TO_REMOVE
+from monarch.pcf.config import Config
 
 
 class AppInstance(dict):
@@ -74,10 +76,14 @@ class AppInstance(dict):
             return rcode
         return 0
 
-    def block(self, direction='ingress'):
+    def block(self, direction='ingress', ports='env'):
         """
         Block access to this application instance on all its known hosts.
         :param direction: str; Traffic direction to block.
+        :param ports: Union[str, set[int]]; Which ports to block, either 'env', 'all', or a custom list/set. If 'env', it
+        will read from the environment to determine what port to block, this is the default and will work for most apps.
+        Use 'all' if you want to block all traffic to and or from the application. Specify a custom list to only block
+        certain ports; IF A CUSTOM LIST IS SPECIFIED, it must also be passed to unblocking.
         :return: Union[int, List[str]]; A returncode if any of the bosh ssh instances do not return 0 and a list of
         commands that would have been run if `get_cmds` is True.
         """
@@ -85,23 +91,42 @@ class AppInstance(dict):
         assert direction, "Could not parse direction!"
 
         cmds = []
-        logger.info("Targeting %s on %s", self['diego_id'], self['cont_ip'])
-        if direction in {'ingress', 'both'}:
-            cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp -j DROP'.format(self['cont_ip']))
-        if direction in {'egress', 'both'}:
-            cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp -j DROP'.format(self['cont_ip']))
-        if not cmds:
-            return 0  # noop
+        if ports == 'all':
+            logger.info("Targeting %s on %s", self['diego_id'], self['cont_ip'])
+            if direction in {'ingress', 'both'}:
+                cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp -j DROP'.format(self['cont_ip']))
+            if direction in {'egress', 'both'}:
+                cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp -j DROP'.format(self['cont_ip']))
+            if not cmds:
+                return 0  # noop
+        else:
+            if ports == 'env':
+                ports = map(lambda v: v[1], filter(self._app_port_not_whitelisted, self['app_ports']))
+            else:
+                assert isinstance(ports, set) or isinstance(ports, list), 'Ports argument is invalid'
+            for cport in ports:
+                logger.info("Targeting %s on %s:%d", self['diego_id'], self['cont_ip'], cport)
+
+                if direction in {'ingress', 'both'}:
+                    cmds.append('sudo iptables -I FORWARD 1 -d {} -p tcp --dport {} -j DROP'
+                                .format(self['cont_ip'], cport))
+                if direction in {'egress', 'both'}:
+                    cmds.append('sudo iptables -I FORWARD 1 -s {} -p tcp --sport {} -j DROP'
+                                .format(self['cont_ip'], cport))
+            if not cmds:
+                return 0  # noop
+
         rcode, _, _ = self.run_cmd_on_diego_cell(cmds)
         if rcode:
             logger.error("Received return code %d from iptables call.", rcode)
             return rcode
         return 0
 
-    def unblock(self):
+    def unblock(self, ports=None):
         """
         Unblock access to this application instance on all its known hosts. This will actually run the unblock commands
         multiple times, as defined by `TIMES_TO_REMOVE` to prevent issues if an application was blocked multiple times.
+        :param ports: set[int]; List of custom ports to unblock.
         """
         cmds = []
         logger.info("Unblocking %s on %s", self['diego_id'], self['cont_ip'])
@@ -111,6 +136,21 @@ class AppInstance(dict):
         cmd = 'sudo iptables -D FORWARD -s {} -p tcp -j DROP'.format(self['cont_ip'])
         for _ in range(TIMES_TO_REMOVE):
             cmds.append(cmd)
+
+        ports = chain(
+            map(
+                lambda v: v[1],
+                filter(self._app_port_not_whitelisted, self['app_ports'])
+            ), (ports or [])
+        )
+        for cport in ports:
+            logger.info("Unblocking %s on %s:%d", self['diego_id'], self['cont_ip'], cport)
+            cmd = 'sudo iptables -D FORWARD -d {} -p tcp --dport {} -j DROP'.format(self['cont_ip'], cport)
+            for _ in range(TIMES_TO_REMOVE):
+                cmds.append(cmd)
+            cmd = 'sudo iptables -D FORWARD -s {} -p tcp --sport {} -j DROP'.format(self['cont_ip'], cport)
+            for _ in range(TIMES_TO_REMOVE):
+                cmds.append(cmd)
 
         self.run_cmd_on_diego_cell(cmds)
 
@@ -281,3 +321,9 @@ class AppInstance(dict):
             logger.error("Failed to perform speedtest on %s!", self['cont_id'])
             return None
         return results[0]
+
+    @staticmethod
+    def _app_port_not_whitelisted(ports):
+        cfg = Config()
+        return ports[0] not in cfg['host-port-whitelist'] and \
+               ports[1] not in cfg['container-port-whitelist']

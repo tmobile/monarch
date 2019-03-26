@@ -204,26 +204,31 @@ class App:
         for app_instance in instances:
             app_instance.crash()
 
-    def block(self, direction='ingress'):
+    def block(self, direction='ingress', ports='env'):
         """
         Block access to this application on all its known hosts.
         :param direction: str; Traffic direction to block.
+        :param ports: Union[str, set[int]]; Which ports to block, either 'env', 'all', or a custom list/set. If 'env', it
+        will read from the environment to determine what port to block, this is the default and will work for most apps.
+        Use 'all' if you want to block all traffic to and or from the application. Specify a custom list to only block
+        certain ports; IF A CUSTOM LIST IS SPECIFIED, it must also be passed to unblocking.
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
         for app_instance in self.instances:
-            rcode = app_instance.block(direction=direction)
+            rcode = app_instance.block(direction=direction, ports=ports)
             if rcode:
-                self.unblock()
+                self.unblock(ports=(ports if not isinstance(ports, str) else None))
                 return rcode
         return 0
 
-    def unblock(self):
+    def unblock(self, ports=None):
         """
         Unblock access to this application on all its known hosts. This will actually run the unblock commands multiple
         times, as defined by `TIMES_TO_REMOVE` to prevent issues if an application was blocked multiple times.
+        :param ports: set[int]; List of custom ports to unblock.
         """
         for app_instance in self.instances:
-            app_instance.unblock()
+            app_instance.unblock(ports=ports)
 
     def block_services(self, services=None, direction='egress'):
         """
