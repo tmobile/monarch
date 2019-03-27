@@ -33,7 +33,7 @@ WORKDIR /monarch
 
 RUN pip install --no-cache-dir -r requirements.txt \
     && python setup.py install \
-    && rm -rf monarch.egg-info
+    && rm -rf monarch.egg-info .eggs
 
 VOLUME ["/monarch/config", "/monarch/certs"]
 ENTRYPOINT ["bash"]

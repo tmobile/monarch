@@ -3,3 +3,6 @@ config
 .gitignore
 .git
 certs
+.eggs
+monarch.egg-info
+.pytest_cache
