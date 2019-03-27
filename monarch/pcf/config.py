@@ -31,7 +31,11 @@ class Config(dict, metaclass=Singleton):
         :param path: Path to configuration file.
         """
         with open(path) as file:
-            self.load_dict(yaml.load(file))
+            if 'full_load' in dir(yaml):
+                obj = yaml.full_load(file)
+            else:
+                obj = yaml.load(file)
+            self.load_dict(obj)
 
     def load_json(self, path):
         """

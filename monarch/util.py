@@ -17,20 +17,26 @@
 
 import json
 import re
+import time
+from statistics import median, variance, mean
 from subprocess import Popen, PIPE
 from logzero import logger
+from socket import gethostbyname
+
+from math import sqrt
 
 
-def run_cmd(cmd, stdin=None, suppress_output=False):
+def run_cmd(cmd, stdin=None, suppress_output=False, timeout=30):
     """
     Run a command in the shell.
     :param cmd: Union[str, List[str]]; Command to run.
     :param stdin: Optional[Union[str, List[str]]]; Input to pipe to the program.
     :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
+    :param timeout: int; How long to wait before timing out in seconds.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     if isinstance(cmd, list):
-        cmd = ' '.join(cmd)
+        cmd = ' '.join(map(str, cmd))
     logger.debug('$ %s', cmd)
 
     if isinstance(stdin, list):
@@ -43,9 +49,9 @@ def run_cmd(cmd, stdin=None, suppress_output=False):
     try:
         with Popen(cmd, shell=True, stdin=(PIPE if stdin else None), stdout=PIPE, stderr=PIPE, encoding='utf8') as proc:
             if stdin:
-                stdout, stderr = proc.communicate(input=stdin + '\n', timeout=30)
+                stdout, stderr = proc.communicate(input=stdin + '\n', timeout=120)
             else:
-                proc.wait(timeout=30)
+                proc.wait(timeout=timeout)
                 stdout = proc.stdout.read()
                 stderr = proc.stderr.read()
             rcode = proc.returncode
@@ -60,6 +66,63 @@ def run_cmd(cmd, stdin=None, suppress_output=False):
     #     logger.debug("STDOUT:\n%s", stdout)
     #     logger.debug("STDERR:\n%s", stderr)
     return rcode, stdout, stderr
+
+
+def ping(url, count=5, interval=200, size=None):
+    """
+    Ping a remote host. (Unix support only!)
+    :param url: Location of the host to ping.
+    :param count: Number of packets to send.
+    :param interval: Time between packet sends in ms (200 is minimum allowed for non-root users).
+    :param size: Size of the packet body to send in bytes. If not specified, then it will be an empty packet.
+    :return: An object containing min, avg, max, and stddev of the round trip times in ms.
+    """
+    cmd = ['ping -c', count, '-i', interval / 1000]
+    if size:
+        cmd.extend(['-s', size])
+    cmd.append(gethostbyname(url))
+    rcode, stdout, _ = run_cmd(cmd)
+    if rcode:
+        raise RuntimeError("Failed to ping {}.".format(url))
+    stdout = stdout.splitlines()[-1]
+    match = re.match(r'rtt min/avg/max/mdev = ([.\d]+)/([.\d]+)/([.\d]+)/([.\d]+) ms', stdout)
+    logger.debug('rtt min: %s, avg: %s, max: %s, stddev: %s', match[1], match[2], match[3], match[4])
+    return {
+        'min': float(match[1]),
+        'avg': float(match[2]),
+        'max': float(match[3]),
+        'stddev': float(match[4])
+    }
+
+
+def curl_ping(url, count=5):
+    """
+    Call a remote host directly using curl. Will calculate the amount of time taken to get the values from the server.
+    :param url: Location of the host to ping.
+    :param count: Number of requests to make.
+    :return: An object containing min, avg, max, and stddev of the round trip times in ms.
+    """
+    cmd = ['curl', url]
+    times = []
+    for _ in range(count):
+        time_start = time.time() * 1000
+        rcode, _, _ = run_cmd(cmd)
+        time_stop = time.time() * 1000
+        if rcode:
+            raise RuntimeError('Failed to curl {}'.format(url))
+        duration = time_stop - time_start
+        times.append(duration)
+        logger.debug('rtt %fms', duration)
+
+    stats = {
+        'min': min(times),
+        'avg': mean(times),
+        'max': max(times),
+        'median': median(times),
+        'stddev': sqrt(variance(times)),
+        'times': times
+    }
+    return stats
 
 
 def extract_json(string):
@@ -108,7 +171,7 @@ def group_lines_by_hanging_indent(lines, mode='group'):
         I am a child
         I am also a child
             I am a child of a child
-        I am am just a child
+        I am just a child
     String without children
     Parent2
         Something
@@ -127,9 +190,14 @@ def group_lines_by_hanging_indent(lines, mode='group'):
 
     `group` Mode Will Yield:
     [
-        ['Parent1', 'I am a child', ['I am also a child', 'I am a child of a child'], 'I am just a child'],
+        ['Parent1',
+            'I am a child',
+            ['I am also a child',
+                'I am a child of a child'],
+            'I am just a child'],
         'String without children',
-        ['Parent2', 'Something']
+        ['Parent2',
+            'Something']
     ]
 
     :param lines: Union[str, List[str]]; String(s) to parse and group by hanging indents. If a single string it will
@@ -145,10 +213,8 @@ def group_lines_by_hanging_indent(lines, mode='group'):
     if mode == 'group':
         obj = []
         _recursively_parse_lines_into_groups(lines, 0, obj, 0)
-    elif mode == 'tree':
-        _, obj = _recursively_parse_lines_into_tree(lines, 0, 0)
     else:
-        assert False  # unreachable
+        _, obj = _recursively_parse_lines_into_tree(lines, 0, 0)
 
     return obj
 
@@ -234,6 +300,43 @@ def filter_map(func, iterable):
         lambda i: i is not None,
         map(func, iterable)
     )
+
+
+def percent_diff(a, b):
+    """
+    Calculate the percent by which `b` deviates from `a`.
+    :param a: First value. (Traditionally the initial value).
+    :param b: Second value. (Traditionally the final value).
+    :return: Percent by which `b` deviates from `a`. (Positive iff b >= a)
+    """
+    return (b - a) / ((a + b) / 2)
+
+
+def remove_outliers(values):
+    """
+    Return the list of values without any outliers.
+    :param values: Iterable series of numbers.
+    :return: `values` without outliers defined by being outside 1.5 times the IQR.
+    """
+    values = list(values)
+    values.sort()
+    count = len(values)
+
+    q1 = median(values[:count//2])
+    q3 = median(values[count//2+1:])
+    iqr = q3 - q1
+    min_v = q1 - 1.5 * iqr
+    max_v = q3 + 1.5 * iqr
+    return list(filter(lambda v: min_v <= v <= max_v, values))
+
+
+def smart_average(values):
+    """
+    Compute the mean of a series of values after removing outliers based on IQR.
+    :param values: Iterable series of numbers.
+    :return: Average of values after excluding outliers.
+    """
+    return mean(remove_outliers(values))
 
 
 class Singleton(type):

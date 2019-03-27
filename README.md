@@ -116,11 +116,23 @@ Sample config.yml or `cfg` values for Chaos Toolkit.
 ```yaml
 bosh:
   cmd: bosh2 # bosh CLI to be used
-  env: bosh-lite #environment alias name 
+  env: bosh-lite # environment alias name or address 
   cf-dep: cf # Bosh deployment name
   cfdot-dc: diego_cell/0
+  credentials: # Optional; CLI will need to be logged in already if not present
+    user: iamaperson
+    pswd: ideallysomethingsecure
+    cacert: |  # include as needed
+      -----BEGIN CERTIFICATE-----
+      ...
+      -----END CERTIFICATE-----
 cf:
   cmd: cf
+  credentials: # Optional; CLI will need to be logged in already if not present
+    user: iamaperson
+    pswd: hopefullysomethingdifferent
+    api: cf.example.com
+    skip_ssl_validation: true # add as needed (false by default)
 container-port-whitelist:
  - 22
  - 2222
@@ -261,8 +273,28 @@ app.unblock_services()
 
 ```
 
+## Tests
+Unit tests are written with pytest and can be run with `./setup.py test`. Before running the tests, you will need to add
+`tests/config/app_test.yml` which is the same as the above configuration with the following appended:
+```yaml
+# ...
+testing:
+  org: coolkids
+  space: ce-testing
+  appname: spring-music
+  push-app: true
+  db-market-name: p-mysql
+  db-plan: 100mb
+  db-instance-name: musicdb
+```
+
+You will also need to include the credential sections for the bosh and cf cli configs. If push-app is true, it will
+expect the `org` and `space` to be pre-existing, but deploy spring-music from scratch (meaning `db-instance-name` and
+`appname` should not already exist). It will perform cleanup after tests are done leaving the space in the state it was
+originally.
+
+These tests can be run from within docker using 
 
 ## License
 Monarch is open-sourced under the terms of section 7 of the Apache 2.0 license and is released AS-IS WITHOUT WARRANTIES
 OR CONDITIONS OF ANY KIND.
-

@@ -52,10 +52,13 @@ class App:
         app.add_services_from_cfg()
         if not app.find_guid():
             logger.error("App discovery failed because GUID could not be found!")
+            return None
         if not app.find_instances():
             logger.error("App discovery failed because no application instances could be found!")
+            return None
         if app.find_services() is None:
             logger.error("App discovery failed because there was an error when finding services!")
+            return None
 
         logger.info("Successfully discovered %s in %s %s.", appname, org, space)
         logger.debug(json.dumps(app.serialize(), indent=2))
@@ -154,6 +157,13 @@ class App:
         """
         self.services = find_application_services(self.name)
         return self.services
+
+    def find_routes(self):
+        """
+        Find the url routes to this application.
+        :return List[str]: The app's route(s).
+        """
+        return find_application_routes(self.guid)
 
     def add_services_from_cfg(self):
         """
@@ -288,7 +298,7 @@ class App:
                     continue
                 if services and service['name'] not in services:
                     continue
-                logger.info("Blocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
+                logger.info("Unblocking %s for %s:%s", service['name'], app_instance['diego_id'], app_instance['cont_ip'])
                 for (sip, protocol, port) in service['hosts']:
                     cmd = ['sudo', 'iptables', '-D', 'FORWARD', '-s', app_instance['cont_ip'],
                            '-d', sip, '-p', protocol]
@@ -307,7 +317,7 @@ class App:
                         cmds.append(' '.join(map(str, cmd)))
             if not cmds:
                 continue
-            monarch.pcf.util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds)
+            monarch.pcf.util.run_cmd_on_diego_cell(app_instance['diego_id'], cmds, suppress_output=True)
             # if rcode:
             #     # This is normal because we remove the rule more than one time just in case.
             #     logger.warn("Received return code {} from iptables call.".format(rcode))
@@ -433,6 +443,41 @@ def find_application_guid(appname):
 
     logger.debug(guid)
     return guid
+
+
+def find_application_routes(app_guid):
+    """
+    Find the url routes of an application.
+    :param app_guid: The application GUID for which to find routes.
+    :return List[str]: The app's route(s).
+    """
+
+    cfg = Config()
+    routes = []
+
+    rcode, stdout, _ = util.run_cmd([
+        cfg['cf']['cmd'], 'curl',
+        '/v2/apps/{}/routes'.format(app_guid)
+    ])
+    if rcode:
+        sys.exit("Failure to call cf curl!")
+
+    resources = map(
+        lambda v: v['entity'],
+        util.extract_json(stdout)[0]['resources']
+    )
+    for resource in resources:
+        host = resource['host']
+        path = resource['path']
+        rcode, stdout, _ = util.run_cmd([cfg['cf']['cmd'], 'curl', resource['domain_url']])
+        if rcode:
+            sys.exit("Failure to call cf curl!")
+        domain = util.extract_json(stdout)[0]['entity']['name']
+        route = '{}.{}'.format(host, domain)
+        if path and path != '':
+            route += '/{}'.format(path)
+        routes.append(route)
+    return routes
 
 
 def find_application_instances(app_guid):

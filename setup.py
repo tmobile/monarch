@@ -19,7 +19,7 @@
 
 import io
 
-import setuptools
+from setuptools import setup
 from monarch import __version__
 
 name = 'monarch'
@@ -32,7 +32,7 @@ classifiers = [
     'Development Status :: 3 - Alpha',
     'Intended Audience :: Developers',
     'Operating System :: OS Independent',
-    'License :: OSI Approved :: Apache-2.0',
+    'License :: OSI Approved :: Apache Software License',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.5',
@@ -56,6 +56,8 @@ setup_params = dict(
     author=author,
     packages=packages,
     include_package_data=True,
+    setup_requires=['pytest_runner'],
+    tests_require=['pytest'],
     install_requires=install_require,
     python_requires='>=3.5.*'
 )
@@ -63,7 +65,7 @@ setup_params = dict(
 
 def main():
     """Package installation entry point."""
-    setuptools.setup(**setup_params)
+    setup(**setup_params)
 
 
 if __name__ == '__main__':
