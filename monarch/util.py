@@ -51,8 +51,13 @@ def run_cmd(cmd, stdin=None):
     except Exception as err:
         logger.warning(err)
         return 1, '', ''
-    # logger.debug("STDOUT:\n%s", stdout)
-    # logger.debug("STDERR:\n%s", stderr)
+    if rcode:
+        logger.warning("Command yielded non-zero return-code!")
+        logger.debug("STDOUT:\n%s", stdout)
+        logger.debug("STDERR:\n%s", stderr)
+    # else:
+    #     logger.debug("STDOUT:\n%s", stdout)
+    #     logger.debug("STDERR:\n%s", stderr)
     return rcode, stdout, stderr
 
 
