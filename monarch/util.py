@@ -21,11 +21,12 @@ from subprocess import Popen, PIPE
 from logzero import logger
 
 
-def run_cmd(cmd, stdin=None):
+def run_cmd(cmd, stdin=None, suppress_output=False):
     """
     Run a command in the shell.
     :param cmd: Union[str, List[str]]; Command to run.
     :param stdin: Optional[Union[str, List[str]]]; Input to pipe to the program.
+    :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     if isinstance(cmd, list):
@@ -51,7 +52,7 @@ def run_cmd(cmd, stdin=None):
     except Exception as err:
         logger.warning(err)
         return 1, '', ''
-    if rcode:
+    if rcode and not suppress_output:
         logger.warning("Command yielded non-zero return-code!")
         logger.debug("STDOUT:\n%s", stdout)
         logger.debug("STDERR:\n%s", stderr)

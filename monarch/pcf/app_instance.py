@@ -45,21 +45,23 @@ class AppInstance(dict):
         obj['app_ports'] = [p for p in self['app_ports']]
         return obj
 
-    def run_cmd_on_diego_cell(self, cmd):
+    def run_cmd_on_diego_cell(self, cmd, **kwargs):
         """
         Run a command in the shell on the hosting diego cell.
         :param cmd: Union[str, List[str]]; Command(s) to run on the Diego Cell.
+        :param kwargs: Additional arguments to pass to run_cmd_on_diego_cell.
         :return: int, str, str; Returncode, stdout, stderr.
         """
-        return monarch.pcf.util.run_cmd_on_diego_cell(self['diego_id'], cmd)
+        return monarch.pcf.util.run_cmd_on_diego_cell(self['diego_id'], cmd, **kwargs)
 
-    def run_cmd_on_container(self, cmd):
+    def run_cmd_on_container(self, cmd, **kwargs):
         """
         Run a command in the shell on the hosting diego cell.
         :param cmd: Union[str, List[str]]; Command(s) to run on the container.
+        :param kwargs: Additional arguments to pass to run_cmd_on_container.
         :return: int, str, str; Returncode, stdout, stderr.
         """
-        return monarch.pcf.util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd)
+        return monarch.pcf.util.run_cmd_on_container(self['diego_id'], self['cont_id'], cmd, **kwargs)
 
     def crash(self):
         """
@@ -152,7 +154,7 @@ class AppInstance(dict):
             for _ in range(TIMES_TO_REMOVE):
                 cmds.append(cmd)
 
-        self.run_cmd_on_diego_cell(cmds)
+        self.run_cmd_on_diego_cell(cmds, suppress_output=True)
 
     def manipulate_network(self, *, latency=None, latency_sd=None, loss=None, loss_r=None,
                            duplication=None, corruption=None):
@@ -262,7 +264,7 @@ class AppInstance(dict):
             'sudo tc filter del dev {} parent ffff: protocol ip prio 1 u32 match ip src 0.0.0.0/0'.format(iface),
             'sudo tc qdisc del dev {} handle ffff: ingress'.format(iface),
             'sudo tc qdisc del dev {} ingress'.format(iface)
-        ])
+        ], suppress_output=True)
 
     def perform_speedtest(self, server=None):
         """

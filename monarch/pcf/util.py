@@ -32,7 +32,7 @@ def cf_target(org, space):
     return rcode
 
 
-def bosh_cli(args, stdin=None, env=None, dep=None):
+def bosh_cli(args, stdin=None, env=None, dep=None, suppress_output=False):
     """
     Call the bosh CLI.
     :param args: Union[List[str], str]; Arguments for the bosh CLI. This will allow chaining additional commands
@@ -40,6 +40,7 @@ def bosh_cli(args, stdin=None, env=None, dep=None):
     :param env: str; The bosh environment to use. Defaults to config value.
     :param dep: str; The bosh deployment to use. Defaults to configured cf deployment value.
     :param stdin: Optional[Union[str, List[Union[str, List[str]]]]]; Input to pipe to the program.
+    :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     boshcfg = Config()['bosh']
@@ -48,29 +49,31 @@ def bosh_cli(args, stdin=None, env=None, dep=None):
         cmd.extend(args)
     else:
         cmd.append(args)
-    return run_cmd(cmd, stdin=stdin)
+    return run_cmd(cmd, stdin=stdin, suppress_output=suppress_output)
 
 
-def run_cmd_on_diego_cell(dcid, cmd):
+def run_cmd_on_diego_cell(dcid, cmd, suppress_output=False):
     """
     Run one or more commands in the shell on a diego cell.
     :param dcid: str; Diego-cell ID of the Diego Cell which is to be connected to.
     :param cmd: Union[str, List[str]]; Command(s) to run on the Diego Cell.
+    :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     if isinstance(cmd, list):
         cmd.append('exit')
     else:
         cmd = [cmd, 'exit']
-    return bosh_cli(['ssh', dcid], cmd)
+    return bosh_cli(['ssh', dcid], cmd, suppress_output=suppress_output)
 
 
-def run_cmd_on_container(dcid, contid, cmd):
+def run_cmd_on_container(dcid, contid, cmd, suppress_output=False):
     """
     Run one or more commands in the shell on a container on a diego cell.
     :param dcid: str; Diego-cell ID of the Diego Cell running the container.
     :param contid: str; Container ID of the container which is to be connected to.
     :param cmd: Union[str, List[str]]; Command(s) to run on the container.
+    :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
     :return: int, str, str; Returncode, stdout, stderr.
     """
     shell_cmd = 'exec sudo /var/vcap/packages/runc/bin/runc exec -t {} /bin/bash'.format(contid)
@@ -78,4 +81,4 @@ def run_cmd_on_container(dcid, contid, cmd):
         cmd.insert(0, shell_cmd)
     else:
         cmd = [shell_cmd, cmd]
-    return run_cmd_on_diego_cell(dcid, cmd)
+    return run_cmd_on_diego_cell(dcid, cmd, suppress_output=suppress_output)
