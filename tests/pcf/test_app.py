@@ -38,7 +38,7 @@ def assert_cmd(*args, **kwargs):
 @pytest.fixture(scope='session')
 def cfg():
     cfg = Config()
-    cfg.load_yaml('tests/config/push_test.yml')
+    cfg.load_yaml('tests/config/app_test.yml')
     yield cfg
 
 
