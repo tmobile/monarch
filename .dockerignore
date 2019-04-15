@@ -1,5 +1,6 @@
 graphics
 config
+tests/config
 .gitignore
 .git
 certs

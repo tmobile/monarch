@@ -38,7 +38,6 @@ With docker up and running, run the following within the root of the git reposit
 docker build -t monarch .
 docker run -it \
     --name monarch \
-    -v C:\Users\<username>\Documents\certs:/monarch/certs           # Can be a different local path or be omitted
     -v C:\Users\<username>\Documents\monarch\config:/monarch/config # and create the needed files from within.
     monarch
 
@@ -51,9 +50,9 @@ yes | docker image prune
 # goto FIRST Run ;)
 ``` 
 
-Note that both certs and config are optional and do not need to be mounted, however, even if you do not have any written
+Note that the config volume is optional and does not need to be mounted, however, even if you do not have any written
 already, you should mount the volumes to prevent data loss when you destroy the container during the inevitable upgrade
-process.
+process. Also, if you plan to run tests, make sure to mount the testing config volume as well!
 
 From within the docker image, you may now use either the python shell to interact with monarch, or chaostollkit which is
 installed automatically when the image is built. You will need to login with cf-cli and bosh-cli before attempting to
