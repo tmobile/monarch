@@ -99,8 +99,7 @@ def get_apps():
         ['source /etc/profile.d/cfdot.sh', 'cfdot actual-lrp-groups']
     )
     if rcode:
-        logger.error("Failed retrieving actual LRP grups from %s", cfg['bosh']['cfdot-dc'])
-        return None
+        logger.warning("May have failed retrieving actual LRP groups from %s", cfg['bosh']['cfdot-dc'])
     apps = []
     for app in util.extract_json(stdout):
         app = app['instance']
