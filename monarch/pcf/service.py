@@ -72,7 +72,7 @@ class Service(dict):
             match = re.match(r'syslog://([a-zA-Z0-9_.-]+):(\d+)', syslog_drain_url)
             sip = dnslookup(match[1])
             service['hosts'].add((sip, 'tcp', match[2]))
-        elif service['type'] == 'p-mysql':
+        elif service['type'] in ['p-mysql', 'p.mysql']:
             service['user'] = credentials['username']
             service['password'] = credentials['password']
             service['hosts'].add((credentials['hostname'], 'tcp', credentials['port']))
