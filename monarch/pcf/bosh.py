@@ -75,11 +75,15 @@ def get_apps():
         'ports': [
             {
                 'container_port': 8080,
-                'host_port': 61028
+                'host_port': 61028,
+                'container_tls_proxy_port': 61001,
+                'host_tls_proxy_port': 61094
             },
             {
                 'container_port': 2222,
-                'host_port': 61029
+                'host_port': 61029,
+                'container_tls_proxy_port': 61002,
+                'host_tls_proxy_port': 61095
             }
         ],
         'instance_address': '198.19.84.194',

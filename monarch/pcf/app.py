@@ -507,13 +507,20 @@ def find_application_instances(app_guid):
             diego_port = ports['host_port']  # node port on the diego-cell
             cont_port = ports['container_port']  # port the application is listening on in the container
 
-            if diego_port in cfg['host-port-whitelist']:
-                continue
-            if cont_port in cfg['container-port-whitelist']:
-                continue
+            add_diego_port = diego_port not in cfg['host-port-whitelist']
+            add_cont_port = cont_port not in cfg['container-port-whitelist']
+            if add_diego_port and add_cont_port:
+                app_ports.add((diego_port, cont_port))
+                logger.debug('Found application at %s:%d with container port %d', diego_ip, diego_port, cont_port)
 
-            app_ports.add((diego_port, cont_port))
-            logger.debug('Found application at %s:%d with container port %d', diego_ip, diego_port, cont_port)
+            diego_tls_port = ports.get('host_tls_proxy_port')
+            cont_tls_port = ports.get('container_tls_proxy_port')
+
+            add_diego_tls_port = diego_tls_port is not None and diego_tls_port not in cfg['host-port-whitelist']
+            add_cont_tls_port = cont_tls_port is not None and cont_tls_port not in cfg['container-port-whitelist']
+            if add_diego_tls_port and add_cont_tls_port:
+                app_ports.add((diego_tls_port, cont_tls_port))
+                logger.debug('Found application at %s:%d with tls container port %d', diego_ip, diego_tls_port, cont_tls_port)
 
         # Lookup the virtual network interface
         _, stdout, _ = monarch.pcf.util.run_cmd_on_diego_cell(diego_id, 'ip a')
