@@ -157,10 +157,11 @@ class AppInstance(dict):
         self.run_cmd_on_diego_cell(cmds, suppress_output=True)
 
     def manipulate_network(self, *, latency=None, latency_sd=None, loss=None, loss_r=None,
-                           duplication=None, corruption=None, direction='egress'):
+                           duplication=None, corruption=None, rate=None, direction='egress'):
         """
         Manipulate the network traffic from the application instance and its services. This will not work simultaneously
-        with network shaping.
+        with network shaping, but the network shaping behavior can also be achieved via the rate parameter of this
+        method.
 
         :param latency: int; Latency to introduce in milliseconds.
         :param latency_sd: int; Standard deviation of the latency in milliseconds, if None, there will be no variance.
@@ -170,9 +171,10 @@ class AppInstance(dict):
         :param duplication: float; Percent in the range [0, 1] of packets which should be duplicated.
         :param corruption: float; Percent in the range [0, 1] of packets which should be corrupted.
         :param direction: str; Traffic direction to manipulate.
+        :param rate: Throughput rate limiting in kbps. See `rate` in https://man7.org/linux/man-pages/man8/tc-netem.8.html
         :return: int; A returncode if any of the bosh ssh instances do not return 0.
         """
-        if not (latency or loss or duplication or corruption):
+        if not (latency or loss or duplication or corruption or rate):
             # if no actions are specified, it is a noop
             return 0
 
@@ -221,6 +223,9 @@ class AppInstance(dict):
             if corruption:
                 assert 0 <= corruption <= 1
                 netem_cmd.extend(['corrupt', '{}%'.format(corruption * 100)])
+            if rate:
+                assert rate > 0
+                netem_cmd.extend(['rate', f'{rate}kbit'])
 
         if len(setup_cmds) > 0:
             self.run_cmd_on_diego_cell(setup_cmds, suppress_output=True)
