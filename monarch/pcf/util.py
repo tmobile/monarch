@@ -68,7 +68,13 @@ def run_cmd_on_container(dcid, contid, cmd, suppress_output=False):
     :param suppress_output: bool; If true, no extra debug output will be printed when an error occurs.
     :return: int, str, str; Returncode, stdout, stderr.
     """
-    shell_cmd = 'exec sudo /var/vcap/packages/runc/bin/runc exec -t {} /bin/bash'.format(contid)
+    cfg = Config()
+    use_containerd = cfg.get("use-containerd") is not None
+    if use_containerd:
+        # Refer to: https://devops.stackexchange.com/a/13781/27344
+        shell_cmd = f'exec sudo /var/vcap/packages/containerd/bin/ctr -a /var/vcap/sys/run/containerd/containerd.sock -n garden tasks exec --exec-id my-shell --tty {contid} /bin/bash'
+    else:
+        shell_cmd = f'exec sudo /var/vcap/packages/runc/bin/runc exec -t {contid} /bin/bash'
     if isinstance(cmd, list):
         cmd.insert(0, shell_cmd)
     else:
