@@ -98,6 +98,10 @@ class Service(dict):
                     dnslookup(hostname), 'tcp',
                     credentials['amqp']['protocols']['management']['port']
                 ))
+        elif re.match("postgresql-\d+-odb", service['type']):
+            service['user'] = credentials['username']
+            service['password'] = credentials['password']
+            service['hosts'].add((credentials['db_host'], 'tcp', credentials['db_port']))
         else:
             logger.warning("Unrecognized service '%s'", service['type'])
 
