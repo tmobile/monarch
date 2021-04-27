@@ -241,6 +241,11 @@ class AppInstance(dict):
 
     def shape_network(self, download_limit=None, upload_limit=None):
         """
+        TODO: recommend deprecating this method. The new `rate` param in manipulate_network functionally replaces it,
+            and this seems appropriate based on the following note from https://man7.org/linux/man-pages/man8/tc-netem.8.html...
+            "rate - delay packets based on packet size and is a replacement for TBF." TBF is what shape_network
+            utilizes.
+
         Impose bandwidth limits on the application's ingress traffic. This will not work simultaneously with other
         network traffic manipulations and will also be undone by calling `unmanipulate_network`.
 
@@ -296,14 +301,13 @@ class AppInstance(dict):
         """
         Undo traffic manipulation changes to the application and its services.
         """
+        # https://serverfault.com/a/488914/648174 (and the link given there)
+        # By just deleting the root/ingress devices, it will reset everything else.
         iface = self['diego_vi']
         self.run_cmd_on_diego_cell([
             f'sudo tc qdisc del dev {iface} root',
-            f'sudo tc filter del dev {iface} parent ffff: protocol ip prio 1 u32 match ip src 0.0.0.0/0',
-            'sudo tc qdisc del dev ifb0 root',
-            f'sudo tc filter del dev {iface} parent ffff: protocol ip u32 match u32 0 0 flowid 1:1 action mirred egress redirect dev ifb0'
-            f'sudo tc qdisc del dev {iface} handle ffff: ingress',
             f'sudo tc qdisc del dev {iface} ingress',
+            'sudo tc qdisc del dev ifb0 root',
         ], suppress_output=True)
 
     def perform_speedtest(self, server=None):
